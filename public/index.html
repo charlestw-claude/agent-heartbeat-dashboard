@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Heartbeat Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="dashboard">
+    <header>
+      <h1>Agent Heartbeat Dashboard</h1>
+      <div class="header-info">
+        <span id="lastUpdate">--</span>
+        <span class="separator">|</span>
+        <span id="overallUptime">--</span>
+      </div>
+    </header>
+
+    <!-- Status Cards -->
+    <section class="status-cards" id="statusCards">
+      <div class="loading">Loading...</div>
+    </section>
+
+    <!-- Charts Row -->
+    <section class="charts-row">
+      <div class="chart-container">
+        <h2>24 Hour Timeline</h2>
+        <div id="timelineChart" class="chart"></div>
+      </div>
+      <div class="chart-container narrow">
+        <h2>Uptime (7 Days)</h2>
+        <div id="uptimeChart" class="chart"></div>
+      </div>
+    </section>
+
+    <!-- Heatmap -->
+    <section class="chart-container full">
+      <h2>Uptime Heatmap (30 Days)</h2>
+      <div id="heatmapChart" class="chart tall"></div>
+    </section>
+
+    <!-- Events -->
+    <section class="chart-container full">
+      <h2>Recent Events</h2>
+      <div class="events-table-wrap">
+        <table id="eventsTable">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Agent</th>
+              <th>Event</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
