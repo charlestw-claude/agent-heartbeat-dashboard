@@ -385,6 +385,8 @@ window.addEventListener('resize', () => {
 // ─── Init & Refresh ─────────────────────────────────────────
 
 async function refresh() {
+  const btn = document.getElementById('refreshBtn');
+  btn?.classList.add('spinning');
   try {
     await Promise.all([
       renderStatusCards(),
@@ -395,8 +397,12 @@ async function refresh() {
     ]);
   } catch (err) {
     console.error('Refresh error:', err);
+  } finally {
+    btn?.classList.remove('spinning');
   }
 }
+
+document.getElementById('refreshBtn')?.addEventListener('click', refresh);
 
 refresh();
 setInterval(refresh, REFRESH_INTERVAL);
