@@ -384,10 +384,25 @@ window.addEventListener('resize', () => {
 
 // ─── Init & Refresh ─────────────────────────────────────────
 
-async function refresh() {
+async function refresh({ triggerCheck = false } = {}) {
   const btn = document.getElementById('refreshBtn');
   btn?.classList.add('spinning');
+  if (btn) btn.disabled = true;
+
   try {
+    if (triggerCheck) {
+      try {
+        const res = await fetch(API + '/api/check-now', { method: 'POST' });
+        if (res.ok) {
+          await new Promise(r => setTimeout(r, 500));
+        } else if (res.status === 429) {
+          console.info('check-now: cooldown or already running, skipping');
+        }
+      } catch (err) {
+        console.warn('check-now failed, falling back to DB refresh:', err);
+      }
+    }
+
     await Promise.all([
       renderStatusCards(),
       renderTimelineChart(),
@@ -399,10 +414,11 @@ async function refresh() {
     console.error('Refresh error:', err);
   } finally {
     btn?.classList.remove('spinning');
+    if (btn) btn.disabled = false;
   }
 }
 
-document.getElementById('refreshBtn')?.addEventListener('click', refresh);
+document.getElementById('refreshBtn')?.addEventListener('click', () => refresh({ triggerCheck: true }));
 
 refresh();
-setInterval(refresh, REFRESH_INTERVAL);
+setInterval(() => refresh(), REFRESH_INTERVAL);

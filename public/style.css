@@ -85,6 +85,11 @@ header h1 {
   transform: scale(0.95);
 }
 
+.refresh-btn:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
 .refresh-btn.spinning svg {
   animation: spin 0.8s linear infinite;
 }
