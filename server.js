@@ -1,10 +1,17 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const { spawn } = require('child_process');
 const { initDb, getDb } = require('./db/database');
 
 const app = express();
 const PORT = process.env.PORT || 3900;
+
+const HEALTH_CHECK_SCRIPT = 'C:\\ClaudeProjects\\system-deployment\\profiles\\vm-agent\\config\\agents\\health-check.ps1';
+const CHECK_NOW_COOLDOWN_MS = 15_000;
+const CHECK_NOW_TIMEOUT_MS = 60_000;
+let lastCheckNowAt = 0;
+let checkNowInFlight = false;
 
 app.use(cors());
 app.use(express.json());
@@ -178,6 +185,47 @@ app.get('/api/daily-summary', (req, res) => {
   `).all();
 
   res.json(rows);
+});
+
+// POST /api/check-now — trigger health-check.ps1 immediately
+app.post('/api/check-now', (req, res) => {
+  const now = Date.now();
+  if (checkNowInFlight) {
+    return res.status(429).json({ error: 'check already in flight' });
+  }
+  if (now - lastCheckNowAt < CHECK_NOW_COOLDOWN_MS) {
+    const retryInMs = CHECK_NOW_COOLDOWN_MS - (now - lastCheckNowAt);
+    return res.status(429).json({ error: 'cooldown', retry_in_ms: retryInMs });
+  }
+
+  checkNowInFlight = true;
+  lastCheckNowAt = now;
+
+  const child = spawn(
+    'powershell.exe',
+    ['-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', HEALTH_CHECK_SCRIPT],
+    { windowsHide: true }
+  );
+
+  const timeout = setTimeout(() => {
+    try { child.kill(); } catch {}
+  }, CHECK_NOW_TIMEOUT_MS);
+
+  child.on('exit', (code) => {
+    clearTimeout(timeout);
+    checkNowInFlight = false;
+    if (!res.headersSent) {
+      res.json({ ok: code === 0, exit_code: code });
+    }
+  });
+
+  child.on('error', (err) => {
+    clearTimeout(timeout);
+    checkNowInFlight = false;
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 });
 
 // Fallback: serve index.html for SPA
