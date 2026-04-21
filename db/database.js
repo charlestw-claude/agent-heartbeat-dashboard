@@ -46,6 +46,15 @@ function initDb() {
     console.log('Migration: added source column to heartbeats');
   }
 
+  // Migration: add telegram_mcp column (values: 'ok'|'fail'|NULL for unknown/legacy)
+  const hasTelegramMcp = db
+    .prepare("SELECT 1 FROM pragma_table_info('heartbeats') WHERE name='telegram_mcp'")
+    .get();
+  if (!hasTelegramMcp) {
+    db.exec("ALTER TABLE heartbeats ADD COLUMN telegram_mcp TEXT");
+    console.log('Migration: added telegram_mcp column to heartbeats');
+  }
+
   // Auto-cleanup: remove heartbeats older than 90 days
   db.prepare(`
     DELETE FROM heartbeats WHERE timestamp < datetime('now', '-90 days')

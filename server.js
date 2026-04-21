@@ -25,7 +25,8 @@ initDb();
 // POST /api/heartbeat — health check writes heartbeat data
 app.post('/api/heartbeat', (req, res) => {
   const { agents, source } = req.body;
-  // agents: [{ name, status, pid? }]
+  // agents: [{ name, status, pid?, telegram_mcp? }]
+  //   telegram_mcp: 'ok' | 'fail' | omitted (treated as NULL = unknown/legacy)
   if (!Array.isArray(agents)) {
     return res.status(400).json({ error: 'agents must be an array' });
   }
@@ -33,18 +34,41 @@ app.post('/api/heartbeat', (req, res) => {
   const src = source === 'manual' ? 'manual' : 'scheduled';
 
   const db = getDb();
-  const stmt = db.prepare(
-    'INSERT INTO heartbeats (agent_name, status, pid, source) VALUES (?, ?, ?, ?)'
+
+  const getPrevMcp = db.prepare(
+    `SELECT telegram_mcp FROM heartbeats
+       WHERE agent_name = ? AND telegram_mcp IS NOT NULL
+       ORDER BY timestamp DESC LIMIT 1`
+  );
+  const insertHeartbeat = db.prepare(
+    'INSERT INTO heartbeats (agent_name, status, pid, source, telegram_mcp) VALUES (?, ?, ?, ?, ?)'
+  );
+  const insertEvent = db.prepare(
+    'INSERT INTO events (agent_name, event_type, details) VALUES (?, ?, ?)'
   );
 
-  const insertMany = db.transaction((items) => {
+  const transitions = [];
+  const persist = db.transaction((items) => {
     for (const agent of items) {
-      stmt.run(agent.name, agent.status, agent.pid || null, src);
+      const mcp = agent.telegram_mcp === 'ok' || agent.telegram_mcp === 'fail'
+        ? agent.telegram_mcp
+        : null;
+      if (mcp) {
+        const prev = getPrevMcp.get(agent.name);
+        if (prev && prev.telegram_mcp !== mcp) {
+          transitions.push({ name: agent.name, from: prev.telegram_mcp, to: mcp });
+        }
+      }
+      insertHeartbeat.run(agent.name, agent.status, agent.pid || null, src, mcp);
+    }
+    for (const t of transitions) {
+      const evt = t.to === 'fail' ? 'telegram_mcp_fail' : 'telegram_mcp_recover';
+      insertEvent.run(t.name, evt, `${t.from} -> ${t.to}`);
     }
   });
 
-  insertMany(agents);
-  res.json({ ok: true, count: agents.length, source: src });
+  persist(agents);
+  res.json({ ok: true, count: agents.length, source: src, transitions: transitions.length });
 });
 
 // POST /api/event — log an event (offline, restart, etc.)
@@ -63,10 +87,12 @@ app.post('/api/event', (req, res) => {
 });
 
 // GET /api/status — current status of all agents (latest heartbeat each)
+//   status is downgraded to 'offline' if telegram_mcp='fail' (process alive but bot dead).
+//   raw_status preserves the process-level status for debugging.
 app.get('/api/status', (req, res) => {
   const db = getDb();
   const rows = db.prepare(`
-    SELECT h.agent_name, h.status, h.pid, h.timestamp
+    SELECT h.agent_name, h.status AS raw_status, h.pid, h.telegram_mcp, h.timestamp
     FROM heartbeats h
     INNER JOIN (
       SELECT agent_name, MAX(timestamp) as max_ts
@@ -76,7 +102,16 @@ app.get('/api/status', (req, res) => {
     ORDER BY h.agent_name
   `).all();
 
-  res.json(rows);
+  const enriched = rows.map(r => ({
+    agent_name: r.agent_name,
+    status: (r.raw_status === 'online' && r.telegram_mcp !== 'fail') ? 'online' : 'offline',
+    raw_status: r.raw_status,
+    telegram_mcp: r.telegram_mcp,
+    pid: r.pid,
+    timestamp: r.timestamp,
+  }));
+
+  res.json(enriched);
 });
 
 // GET /api/heartbeats?hours=24&agent=Claude-Agent-01
@@ -104,6 +139,8 @@ app.get('/api/heartbeats', (req, res) => {
 });
 
 // GET /api/uptime?days=7
+// Availability = process online AND (telegram_mcp IS NULL OR telegram_mcp = 'ok').
+// NULL counts as ok so legacy rows (pre-MCP-probe) aren't retroactively marked down.
 app.get('/api/uptime', (req, res) => {
   const days = parseInt(req.query.days) || 7;
   const db = getDb();
@@ -112,9 +149,9 @@ app.get('/api/uptime', (req, res) => {
     SELECT
       agent_name,
       COUNT(*) as total_checks,
-      SUM(CASE WHEN status = 'online' THEN 1 ELSE 0 END) as online_checks,
+      SUM(CASE WHEN status = 'online' AND (telegram_mcp IS NULL OR telegram_mcp = 'ok') THEN 1 ELSE 0 END) as online_checks,
       ROUND(
-        CAST(SUM(CASE WHEN status = 'online' THEN 1 ELSE 0 END) AS REAL)
+        CAST(SUM(CASE WHEN status = 'online' AND (telegram_mcp IS NULL OR telegram_mcp = 'ok') THEN 1 ELSE 0 END) AS REAL)
         / COUNT(*) * 100, 2
       ) as uptime_pct
     FROM heartbeats
@@ -138,7 +175,7 @@ app.get('/api/heatmap', (req, res) => {
       strftime('%Y-%m-%d', timestamp) as date,
       CAST(strftime('%H', timestamp) AS INTEGER) as hour,
       ROUND(
-        CAST(SUM(CASE WHEN status = 'online' THEN 1 ELSE 0 END) AS REAL)
+        CAST(SUM(CASE WHEN status = 'online' AND (telegram_mcp IS NULL OR telegram_mcp = 'ok') THEN 1 ELSE 0 END) AS REAL)
         / COUNT(*) * 100, 1
       ) as uptime_pct
     FROM heartbeats
@@ -177,9 +214,9 @@ app.get('/api/daily-summary', (req, res) => {
       agent_name,
       strftime('%Y-%m-%d', timestamp) as date,
       COUNT(*) as total_checks,
-      SUM(CASE WHEN status = 'online' THEN 1 ELSE 0 END) as online_checks,
+      SUM(CASE WHEN status = 'online' AND (telegram_mcp IS NULL OR telegram_mcp = 'ok') THEN 1 ELSE 0 END) as online_checks,
       ROUND(
-        CAST(SUM(CASE WHEN status = 'online' THEN 1 ELSE 0 END) AS REAL)
+        CAST(SUM(CASE WHEN status = 'online' AND (telegram_mcp IS NULL OR telegram_mcp = 'ok') THEN 1 ELSE 0 END) AS REAL)
         / COUNT(*) * 100, 1
       ) as uptime_pct
     FROM heartbeats

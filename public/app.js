@@ -66,16 +66,31 @@ async function renderStatusCards() {
     const uptimePct = ut ? ut.uptime_pct : '--';
     const statusClass = agent.status || 'unknown';
 
+    const mcp = agent.telegram_mcp;
+    const mcpClass = mcp === 'ok' ? 'ok' : mcp === 'fail' ? 'fail' : 'unknown';
+    const mcpLabel = mcp === 'ok' ? 'MCP ok' : mcp === 'fail' ? 'MCP fail' : 'MCP ?';
+    const mcpTitle = mcp === 'fail'
+      ? 'Telegram bot getMe failed — process alive but bot unreachable'
+      : mcp === 'ok' ? 'Telegram bot reachable' : 'MCP status unknown (pre-rollout data)';
+
+    const rawBadge = (agent.raw_status && agent.raw_status !== agent.status)
+      ? `<span class="card-meta-row" title="process-level status">proc: ${agent.raw_status}</span>`
+      : '';
+
     return `
       <div class="status-card ${statusClass}">
         <div class="card-header">
           <span class="card-name">${agent.agent_name.replace('Claude-', '')}</span>
           <span class="card-status ${statusClass}">${statusClass}</span>
         </div>
+        <div class="card-badges">
+          <span class="mcp-badge ${mcpClass}" title="${mcpTitle}">${mcpLabel}</span>
+        </div>
         <div class="card-meta">
           <span>Uptime (7d): ${uptimePct}%</span>
           <span>Last seen: ${timeSince(agent.timestamp)}</span>
           ${agent.pid ? `<span>PID: ${agent.pid}</span>` : ''}
+          ${rawBadge}
         </div>
       </div>
     `;
