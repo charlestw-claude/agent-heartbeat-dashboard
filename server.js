@@ -24,25 +24,27 @@ initDb();
 
 // POST /api/heartbeat — health check writes heartbeat data
 app.post('/api/heartbeat', (req, res) => {
-  const { agents } = req.body;
+  const { agents, source } = req.body;
   // agents: [{ name, status, pid? }]
   if (!Array.isArray(agents)) {
     return res.status(400).json({ error: 'agents must be an array' });
   }
 
+  const src = source === 'manual' ? 'manual' : 'scheduled';
+
   const db = getDb();
   const stmt = db.prepare(
-    'INSERT INTO heartbeats (agent_name, status, pid) VALUES (?, ?, ?)'
+    'INSERT INTO heartbeats (agent_name, status, pid, source) VALUES (?, ?, ?, ?)'
   );
 
   const insertMany = db.transaction((items) => {
     for (const agent of items) {
-      stmt.run(agent.name, agent.status, agent.pid || null);
+      stmt.run(agent.name, agent.status, agent.pid || null, src);
     }
   });
 
   insertMany(agents);
-  res.json({ ok: true, count: agents.length });
+  res.json({ ok: true, count: agents.length, source: src });
 });
 
 // POST /api/event — log an event (offline, restart, etc.)
@@ -117,6 +119,7 @@ app.get('/api/uptime', (req, res) => {
       ) as uptime_pct
     FROM heartbeats
     WHERE timestamp >= datetime('now', '-${days} days')
+      AND source = 'scheduled'
     GROUP BY agent_name
     ORDER BY agent_name
   `).all();
@@ -140,6 +143,7 @@ app.get('/api/heatmap', (req, res) => {
       ) as uptime_pct
     FROM heartbeats
     WHERE timestamp >= datetime('now', '-${days} days')
+      AND source = 'scheduled'
     GROUP BY agent_name, date, hour
     ORDER BY agent_name, date, hour
   `).all();
@@ -180,6 +184,7 @@ app.get('/api/daily-summary', (req, res) => {
       ) as uptime_pct
     FROM heartbeats
     WHERE timestamp >= datetime('now', '-${days} days')
+      AND source = 'scheduled'
     GROUP BY agent_name, date
     ORDER BY date, agent_name
   `).all();
@@ -203,7 +208,7 @@ app.post('/api/check-now', (req, res) => {
 
   const child = spawn(
     'powershell.exe',
-    ['-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', HEALTH_CHECK_SCRIPT],
+    ['-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', HEALTH_CHECK_SCRIPT, '-Source', 'manual'],
     { windowsHide: true }
   );
 

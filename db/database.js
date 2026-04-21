@@ -15,6 +15,7 @@ function initDb() {
       agent_name TEXT NOT NULL,
       status TEXT NOT NULL CHECK(status IN ('online', 'offline')),
       pid INTEGER,
+      source TEXT NOT NULL DEFAULT 'scheduled',
       timestamp DATETIME DEFAULT (datetime('now'))
     );
 
@@ -35,6 +36,15 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_events_ts
       ON events(timestamp);
   `);
+
+  // Migration: add source column to existing heartbeats tables (idempotent)
+  const hasSource = db
+    .prepare("SELECT 1 FROM pragma_table_info('heartbeats') WHERE name='source'")
+    .get();
+  if (!hasSource) {
+    db.exec("ALTER TABLE heartbeats ADD COLUMN source TEXT NOT NULL DEFAULT 'scheduled'");
+    console.log('Migration: added source column to heartbeats');
+  }
 
   // Auto-cleanup: remove heartbeats older than 90 days
   db.prepare(`
