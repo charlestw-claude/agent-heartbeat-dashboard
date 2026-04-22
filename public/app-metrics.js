@@ -105,23 +105,10 @@
         },
       ],
       series: [
-        {
-          name: 'CPU %', type: 'line', showSymbol: false, yAxisIndex: 0,
-          data: cpuData,
-          lineStyle: { width: 2, color: COLORS.cpu },
-          areaStyle: {
-            color: {
-              type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-              colorStops: [
-                { offset: 0, color: 'rgba(59, 130, 246, 0.35)' },
-                { offset: 1, color: 'rgba(59, 130, 246, 0)' },
-              ],
-            },
-          },
-        },
-        { name: 'RAM GB', type: 'line', showSymbol: false, yAxisIndex: 1, data: memData, lineStyle: { width: 2, color: COLORS.mem } },
-        { name: 'Net RX MB/s', type: 'line', showSymbol: false, yAxisIndex: 1, data: rxData, lineStyle: { width: 1.4, color: COLORS.rx } },
-        { name: 'Net TX MB/s', type: 'line', showSymbol: false, yAxisIndex: 1, data: txData, lineStyle: { width: 1.4, color: COLORS.tx } },
+        { name: 'CPU %',       type: 'line', showSymbol: false, yAxisIndex: 0, data: cpuData, lineStyle: { width: 1.8, color: COLORS.cpu } },
+        { name: 'RAM GB',      type: 'line', showSymbol: false, yAxisIndex: 1, data: memData, lineStyle: { width: 1.8, color: COLORS.mem } },
+        { name: 'Net RX MB/s', type: 'line', showSymbol: false, yAxisIndex: 1, data: rxData,  lineStyle: { width: 1.4, color: COLORS.rx } },
+        { name: 'Net TX MB/s', type: 'line', showSymbol: false, yAxisIndex: 1, data: txData,  lineStyle: { width: 1.4, color: COLORS.tx } },
       ],
     };
   }
