@@ -30,12 +30,15 @@
     return window.innerWidth <= 640;
   }
 
+  const WINDOW_MS = MAX_POINTS * 1000;
+
   function buildOption() {
     const narrow = isNarrow();
     return {
       backgroundColor: 'transparent',
       textStyle: { color: '#c5c9d9' },
       color: [COLORS.cpu, COLORS.mem, COLORS.rx, COLORS.tx],
+      animation: false,
       tooltip: {
         trigger: 'axis',
         backgroundColor: '#1a1d27',
@@ -61,7 +64,7 @@
       xAxis: {
         type: 'time',
         axisLine: { lineStyle: { color: '#2e3345' } },
-        axisLabel: { color: '#9ba0b5', fontSize: 10 },
+        axisLabel: { color: '#9ba0b5', fontSize: 10, hideOverlap: true },
         splitLine: { show: false },
       },
       yAxis: [
@@ -124,6 +127,7 @@
       tsData.shift(); cpuData.shift(); memData.shift(); rxData.shift(); txData.shift();
     }
     chart.setOption({
+      xAxis: { min: t - WINDOW_MS, max: t },
       series: [
         { data: cpuData },
         { data: memData },

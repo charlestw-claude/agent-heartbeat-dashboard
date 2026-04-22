@@ -304,22 +304,31 @@ async function renderHeatmapChart() {
         return `${date}<br>${agent}: ${val != null ? val + '%' : 'No data'}`;
       },
     },
-    grid: { left: 100, right: 40, top: 8, bottom: 60 },
+    grid: {
+      left: window.innerWidth <= 480 ? 70 : 100,
+      right: window.innerWidth <= 480 ? 16 : 40,
+      top: 8,
+      bottom: 60,
+    },
     xAxis: {
       type: 'category',
       data: uniqueDates.map(d => d.slice(5)), // MM-DD
       axisLabel: {
         color: '#9ba0b5',
-        fontSize: 10,
-        rotate: 45,
-        interval: 0,
+        fontSize: window.innerWidth <= 480 ? 9 : 10,
+        rotate: window.innerWidth <= 768 ? 0 : 45,
+        hideOverlap: true,
+        interval: window.innerWidth <= 480 ? 'auto' : (window.innerWidth <= 768 ? 3 : 0),
       },
       splitArea: { show: false },
     },
     yAxis: {
       type: 'category',
       data: agentLabels,
-      axisLabel: { color: '#9ba0b5', fontSize: 11 },
+      axisLabel: {
+        color: '#9ba0b5',
+        fontSize: window.innerWidth <= 480 ? 10 : 11,
+      },
     },
     visualMap: {
       min: 0,
