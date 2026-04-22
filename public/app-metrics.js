@@ -1,9 +1,11 @@
 // VM realtime metrics panel. Streams 1s samples over WebSocket and renders
-// a rolling 15-minute line chart (CPU % + memory GB). Gauges read the
-// latest sample.
+// a rolling 2-minute line chart. A rAF loop shifts the xAxis window
+// continuously against wall-clock time so the chart drifts left smoothly
+// between sample arrivals. Gauges show the latest sample.
 
 (function () {
-  const MAX_POINTS = 900; // 15 minutes at 1s
+  const BUFFER_POINTS = 900;        // keep up to 15 min in memory
+  const WINDOW_MS = 2 * 60 * 1000;  // visible: 2 minutes — short enough to see drift
   const chartEl = document.getElementById('vmMetricsChart');
   const statusEl = document.getElementById('vmMetricsStatus');
   const cpuEl = document.getElementById('vmCpu');
@@ -30,17 +32,14 @@
     return window.innerWidth <= 640;
   }
 
-  const WINDOW_MS = MAX_POINTS * 1000;
-
   function buildOption() {
     const narrow = isNarrow();
+    const now = Date.now();
     return {
       backgroundColor: 'transparent',
       textStyle: { color: '#c5c9d9' },
       color: [COLORS.cpu, COLORS.mem, COLORS.rx, COLORS.tx],
-      animation: true,
-      animationDurationUpdate: 900,
-      animationEasingUpdate: 'linear',
+      animation: false,
       tooltip: {
         trigger: 'axis',
         backgroundColor: '#1a1d27',
@@ -65,6 +64,8 @@
       },
       xAxis: {
         type: 'time',
+        min: now - WINDOW_MS,
+        max: now,
         axisLine: { lineStyle: { color: '#2e3345' } },
         axisLabel: { color: '#9ba0b5', fontSize: 10, hideOverlap: true },
         splitLine: { show: false },
@@ -109,6 +110,17 @@
     chart.resize();
   });
 
+  // Continuous scroll: every ~33ms (30fps), shift xAxis to [now-WINDOW, now].
+  // Series data is untouched here; new points arrive via push(). ECharts
+  // auto-clips points outside the xAxis range, so the line visibly drifts left.
+  function tick() {
+    const now = Date.now();
+    chart.setOption({
+      xAxis: { min: now - WINDOW_MS, max: now },
+    });
+  }
+  setInterval(tick, 33);
+
   function fmtBytes(bps) {
     if (bps === null || bps === undefined) return '--';
     const mb = bps / 1048576;
@@ -125,11 +137,10 @@
     memData.push([t, sample.mem_used_gb]);
     rxData.push([t, sample.net_rx_bps / 1048576]);
     txData.push([t, sample.net_tx_bps / 1048576]);
-    while (tsData.length > MAX_POINTS) {
+    while (tsData.length > BUFFER_POINTS) {
       tsData.shift(); cpuData.shift(); memData.shift(); rxData.shift(); txData.shift();
     }
     chart.setOption({
-      xAxis: { min: t - WINDOW_MS, max: t },
       series: [
         { data: cpuData },
         { data: memData },
@@ -148,8 +159,8 @@
     diskEl.textContent = fmtBytes(sample.disk_read_bps) + ' / ' + fmtBytes(sample.disk_write_bps);
   }
 
-  // Backfill last 15 min so the chart isn't empty on first load
-  fetch('/api/metrics/recent?minutes=15')
+  // Backfill the last 2 minutes so the chart isn't empty on first load
+  fetch('/api/metrics/recent?minutes=2')
     .then((r) => r.json())
     .then((rows) => { for (const r of rows) push(r); })
     .catch(() => {});
