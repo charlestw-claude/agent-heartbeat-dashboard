@@ -55,7 +55,16 @@
           <div class="vm-gauge-value" id="vmDisk">-- / --</div>
         </div>
       </div>
-      <div id="vmMetricsChart" class="chart tall"></div>
+      <div class="vm-charts-grid">
+        <div class="vm-chart-block">
+          <div class="vm-chart-title">CPU <span class="vm-chart-dot" style="background:#3b82f6"></span> · RAM <span class="vm-chart-dot" style="background:#10b981"></span></div>
+          <div id="vmCpuMemChart" class="vm-chart"></div>
+        </div>
+        <div class="vm-chart-block">
+          <div class="vm-chart-title">Net RX <span class="vm-chart-dot" style="background:#f59e0b"></span> · TX <span class="vm-chart-dot" style="background:#fcd34d"></span></div>
+          <div id="vmNetChart" class="vm-chart"></div>
+        </div>
+      </div>
     </section>
 
     <!-- Charts Row -->
