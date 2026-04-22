@@ -31,6 +31,33 @@
       <div class="loading">Loading...</div>
     </section>
 
+    <!-- VM Realtime Metrics -->
+    <section class="chart-container full vm-panel">
+      <div class="panel-header">
+        <h2>VM Realtime <span class="panel-sub">· 1s sampling</span></h2>
+        <span id="vmMetricsStatus" class="vm-status">--</span>
+      </div>
+      <div class="vm-metrics-row">
+        <div class="vm-gauge cpu">
+          <div class="vm-gauge-label">CPU</div>
+          <div class="vm-gauge-value" id="vmCpu">-- %</div>
+        </div>
+        <div class="vm-gauge mem">
+          <div class="vm-gauge-label">RAM</div>
+          <div class="vm-gauge-value" id="vmMem">-- GB</div>
+        </div>
+        <div class="vm-gauge net">
+          <div class="vm-gauge-label">Net RX / TX</div>
+          <div class="vm-gauge-value" id="vmNet">-- / --</div>
+        </div>
+        <div class="vm-gauge disk">
+          <div class="vm-gauge-label">Disk R / W</div>
+          <div class="vm-gauge-value" id="vmDisk">-- / --</div>
+        </div>
+      </div>
+      <div id="vmMetricsChart" class="chart tall"></div>
+    </section>
+
     <!-- Charts Row -->
     <section class="charts-row">
       <div class="chart-container">
@@ -47,32 +74,6 @@
     <section class="chart-container full">
       <h2>Uptime Heatmap (30 Days)</h2>
       <div id="heatmapChart" class="chart tall"></div>
-    </section>
-
-    <!-- VM Realtime Metrics -->
-    <section class="chart-container full">
-      <h2>VM Realtime (1s)
-        <span id="vmMetricsStatus" class="vm-status">--</span>
-      </h2>
-      <div class="vm-metrics-row">
-        <div class="vm-gauge">
-          <div class="vm-gauge-label">CPU</div>
-          <div class="vm-gauge-value" id="vmCpu">-- %</div>
-        </div>
-        <div class="vm-gauge">
-          <div class="vm-gauge-label">RAM</div>
-          <div class="vm-gauge-value" id="vmMem">-- GB</div>
-        </div>
-        <div class="vm-gauge">
-          <div class="vm-gauge-label">Net RX / TX</div>
-          <div class="vm-gauge-value" id="vmNet">-- / --</div>
-        </div>
-        <div class="vm-gauge">
-          <div class="vm-gauge-label">Disk R / W</div>
-          <div class="vm-gauge-value" id="vmDisk">-- / --</div>
-        </div>
-      </div>
-      <div id="vmMetricsChart" class="chart tall"></div>
     </section>
 
     <!-- Events -->

@@ -12,31 +12,97 @@
   const diskEl = document.getElementById('vmDisk');
   if (!chartEl) return;
 
-  const chart = echarts.init(chartEl);
+  const chart = echarts.init(chartEl, null, { renderer: 'canvas' });
   const tsData = [];
   const cpuData = [];
   const memData = [];
   const rxData = [];
   const txData = [];
 
-  chart.setOption({
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['CPU %', 'RAM GB', 'Net RX MB/s', 'Net TX MB/s'], top: 0 },
-    grid: { left: 50, right: 60, top: 30, bottom: 40 },
-    xAxis: { type: 'time' },
-    yAxis: [
-      { type: 'value', name: '%', min: 0, max: 100, position: 'left' },
-      { type: 'value', name: 'GB / MB/s', position: 'right' },
-    ],
-    series: [
-      { name: 'CPU %', type: 'line', showSymbol: false, yAxisIndex: 0, data: [], lineStyle: { width: 1.5 }, smooth: 0.2 },
-      { name: 'RAM GB', type: 'line', showSymbol: false, yAxisIndex: 1, data: [], lineStyle: { width: 1.5 }, smooth: 0.2 },
-      { name: 'Net RX MB/s', type: 'line', showSymbol: false, yAxisIndex: 1, data: [], lineStyle: { width: 1 } },
-      { name: 'Net TX MB/s', type: 'line', showSymbol: false, yAxisIndex: 1, data: [], lineStyle: { width: 1 } },
-    ],
-  });
+  const COLORS = {
+    cpu:  '#3b82f6',
+    mem:  '#10b981',
+    rx:   '#f59e0b',
+    tx:   '#a855f7',
+  };
 
-  window.addEventListener('resize', () => chart.resize());
+  function isNarrow() {
+    return window.innerWidth <= 640;
+  }
+
+  function buildOption() {
+    const narrow = isNarrow();
+    return {
+      backgroundColor: 'transparent',
+      textStyle: { color: '#c5c9d9' },
+      color: [COLORS.cpu, COLORS.mem, COLORS.rx, COLORS.tx],
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: '#1a1d27',
+        borderColor: '#2e3345',
+        textStyle: { color: '#e4e6ed', fontSize: 12 },
+        axisPointer: { lineStyle: { color: '#3e4358' } },
+      },
+      legend: {
+        data: ['CPU %', 'RAM GB', 'Net RX MB/s', 'Net TX MB/s'],
+        top: 0,
+        textStyle: { color: '#c5c9d9', fontSize: 11 },
+        itemWidth: 14,
+        itemHeight: 8,
+        itemGap: narrow ? 8 : 14,
+      },
+      grid: {
+        left: narrow ? 38 : 48,
+        right: narrow ? 42 : 58,
+        top: narrow ? 52 : 36,
+        bottom: 30,
+        containLabel: false,
+      },
+      xAxis: {
+        type: 'time',
+        axisLine: { lineStyle: { color: '#2e3345' } },
+        axisLabel: { color: '#9ba0b5', fontSize: 10 },
+        splitLine: { show: false },
+      },
+      yAxis: [
+        {
+          type: 'value',
+          name: '%',
+          min: 0,
+          max: 100,
+          position: 'left',
+          nameTextStyle: { color: '#9ba0b5', fontSize: 10 },
+          axisLine: { show: false },
+          axisTick: { show: false },
+          axisLabel: { color: '#9ba0b5', fontSize: 10 },
+          splitLine: { lineStyle: { color: '#2e334522' } },
+        },
+        {
+          type: 'value',
+          name: narrow ? '' : 'GB / MB/s',
+          position: 'right',
+          nameTextStyle: { color: '#9ba0b5', fontSize: 10 },
+          axisLine: { show: false },
+          axisTick: { show: false },
+          axisLabel: { color: '#9ba0b5', fontSize: 10 },
+          splitLine: { show: false },
+        },
+      ],
+      series: [
+        { name: 'CPU %', type: 'line', showSymbol: false, yAxisIndex: 0, data: cpuData, lineStyle: { width: 1.8 }, smooth: 0.2 },
+        { name: 'RAM GB', type: 'line', showSymbol: false, yAxisIndex: 1, data: memData, lineStyle: { width: 1.8 }, smooth: 0.2 },
+        { name: 'Net RX MB/s', type: 'line', showSymbol: false, yAxisIndex: 1, data: rxData, lineStyle: { width: 1.2 } },
+        { name: 'Net TX MB/s', type: 'line', showSymbol: false, yAxisIndex: 1, data: txData, lineStyle: { width: 1.2 } },
+      ],
+    };
+  }
+
+  chart.setOption(buildOption());
+
+  window.addEventListener('resize', () => {
+    chart.setOption(buildOption(), { replaceMerge: ['grid', 'yAxis', 'legend'] });
+    chart.resize();
+  });
 
   function fmtBytes(bps) {
     if (bps === null || bps === undefined) return '--';

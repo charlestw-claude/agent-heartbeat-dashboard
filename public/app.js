@@ -131,7 +131,7 @@ async function renderTimelineChart() {
 
   const option = {
     backgroundColor: 'transparent',
-    textStyle: { color: '#8b8fa3' },
+    textStyle: { color: '#9ba0b5' },
     tooltip: {
       trigger: 'axis',
       backgroundColor: '#1a1d27',
@@ -147,7 +147,7 @@ async function renderTimelineChart() {
     },
     legend: {
       top: 0,
-      textStyle: { color: '#8b8fa3', fontSize: 11 },
+      textStyle: { color: '#9ba0b5', fontSize: 11 },
       itemWidth: 12,
       itemHeight: 8,
     },
@@ -156,7 +156,7 @@ async function renderTimelineChart() {
       type: 'time',
       axisLine: { lineStyle: { color: '#2e3345' } },
       axisLabel: {
-        color: '#8b8fa3',
+        color: '#9ba0b5',
         fontSize: 11,
         formatter: (val) => {
           const d = new Date(val);
@@ -170,7 +170,7 @@ async function renderTimelineChart() {
       min: -0.1,
       max: 1.1,
       axisLabel: {
-        color: '#8b8fa3',
+        color: '#9ba0b5',
         fontSize: 11,
         formatter: (v) => v === 1 ? 'ON' : v === 0 ? 'OFF' : '',
       },
@@ -205,7 +205,7 @@ async function renderUptimeChart() {
 
   const option = {
     backgroundColor: 'transparent',
-    textStyle: { color: '#8b8fa3' },
+    textStyle: { color: '#9ba0b5' },
     tooltip: {
       trigger: 'axis',
       backgroundColor: '#1a1d27',
@@ -218,13 +218,13 @@ async function renderUptimeChart() {
       type: 'value',
       min: 0,
       max: 100,
-      axisLabel: { color: '#8b8fa3', fontSize: 11, formatter: '{value}%' },
+      axisLabel: { color: '#9ba0b5', fontSize: 11, formatter: '{value}%' },
       splitLine: { lineStyle: { color: '#2e334522' } },
     },
     yAxis: {
       type: 'category',
       data: names,
-      axisLabel: { color: '#8b8fa3', fontSize: 11 },
+      axisLabel: { color: '#9ba0b5', fontSize: 11 },
       axisLine: { lineStyle: { color: '#2e3345' } },
     },
     series: [{
@@ -236,7 +236,7 @@ async function renderUptimeChart() {
       label: {
         show: true,
         position: 'right',
-        color: '#8b8fa3',
+        color: '#9ba0b5',
         fontSize: 11,
         formatter: '{c}%',
       },
@@ -292,7 +292,7 @@ async function renderHeatmapChart() {
 
   const option = {
     backgroundColor: 'transparent',
-    textStyle: { color: '#8b8fa3' },
+    textStyle: { color: '#9ba0b5' },
     tooltip: {
       backgroundColor: '#1a1d27',
       borderColor: '#2e3345',
@@ -309,7 +309,7 @@ async function renderHeatmapChart() {
       type: 'category',
       data: uniqueDates.map(d => d.slice(5)), // MM-DD
       axisLabel: {
-        color: '#8b8fa3',
+        color: '#9ba0b5',
         fontSize: 10,
         rotate: 45,
         interval: 0,
@@ -319,7 +319,7 @@ async function renderHeatmapChart() {
     yAxis: {
       type: 'category',
       data: agentLabels,
-      axisLabel: { color: '#8b8fa3', fontSize: 11 },
+      axisLabel: { color: '#9ba0b5', fontSize: 11 },
     },
     visualMap: {
       min: 0,
@@ -330,7 +330,7 @@ async function renderHeatmapChart() {
       bottom: 0,
       itemWidth: 12,
       itemHeight: 120,
-      textStyle: { color: '#8b8fa3', fontSize: 11 },
+      textStyle: { color: '#9ba0b5', fontSize: 11 },
       inRange: {
         color: ['#7f1d1d', '#991b1b', '#dc2626', '#f59e0b', '#22c55e', '#16a34a'],
       },
