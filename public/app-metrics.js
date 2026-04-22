@@ -4,8 +4,8 @@
 // between sample arrivals. Gauges show the latest sample.
 
 (function () {
-  const BUFFER_POINTS = 900;        // keep up to 15 min in memory
   const WINDOW_MS = 2 * 60 * 1000;  // visible: 2 minutes — short enough to see drift
+  const BUFFER_POINTS = 150;        // only ~5s more than the visible window
   const chartEl = document.getElementById('vmMetricsChart');
   const statusEl = document.getElementById('vmMetricsStatus');
   const cpuEl = document.getElementById('vmCpu');
@@ -48,7 +48,7 @@
         axisPointer: { lineStyle: { color: '#3e4358' } },
       },
       legend: {
-        data: ['CPU %', 'RAM GB', 'Net RX MB/s', 'Net TX MB/s'],
+        data: ['CPU %', 'RAM GB', 'Net RX KB/s', 'Net TX KB/s'],
         top: 0,
         textStyle: { color: '#c5c9d9', fontSize: 11 },
         itemWidth: 14,
@@ -57,7 +57,7 @@
       },
       grid: {
         left: narrow ? 38 : 48,
-        right: narrow ? 42 : 58,
+        right: narrow ? 72 : 96,
         top: narrow ? 52 : 36,
         bottom: 30,
         containLabel: false,
@@ -95,20 +95,33 @@
         },
         {
           type: 'value',
-          name: narrow ? '' : 'GB / MB/s',
+          name: narrow ? '' : 'GB',
           position: 'right',
-          nameTextStyle: { color: '#9ba0b5', fontSize: 10 },
+          offset: 0,
+          nameTextStyle: { color: COLORS.mem, fontSize: 10 },
           axisLine: { show: false },
           axisTick: { show: false },
-          axisLabel: { color: '#9ba0b5', fontSize: 10 },
+          axisLabel: { color: COLORS.mem, fontSize: 10 },
+          splitLine: { show: false },
+        },
+        {
+          type: 'value',
+          name: narrow ? '' : 'KB/s',
+          position: 'right',
+          offset: narrow ? 32 : 44,
+          min: 0,
+          nameTextStyle: { color: COLORS.rx, fontSize: 10 },
+          axisLine: { show: false },
+          axisTick: { show: false },
+          axisLabel: { color: COLORS.rx, fontSize: 10, formatter: (v) => v >= 1000 ? (v / 1000).toFixed(1) + 'M' : Math.round(v) },
           splitLine: { show: false },
         },
       ],
       series: [
         { name: 'CPU %',       type: 'line', showSymbol: false, yAxisIndex: 0, data: cpuData, lineStyle: { width: 1.8, color: COLORS.cpu } },
         { name: 'RAM GB',      type: 'line', showSymbol: false, yAxisIndex: 1, data: memData, lineStyle: { width: 1.8, color: COLORS.mem } },
-        { name: 'Net RX MB/s', type: 'line', showSymbol: false, yAxisIndex: 1, data: rxData,  lineStyle: { width: 1.4, color: COLORS.rx } },
-        { name: 'Net TX MB/s', type: 'line', showSymbol: false, yAxisIndex: 1, data: txData,  lineStyle: { width: 1.4, color: COLORS.tx } },
+        { name: 'Net RX KB/s', type: 'line', showSymbol: false, yAxisIndex: 2, data: rxData,  lineStyle: { width: 1.4, color: COLORS.rx } },
+        { name: 'Net TX KB/s', type: 'line', showSymbol: false, yAxisIndex: 2, data: txData,  lineStyle: { width: 1.4, color: COLORS.tx } },
       ],
     };
   }
@@ -145,8 +158,8 @@
     tsData.push(t);
     cpuData.push([t, sample.cpu_pct]);
     memData.push([t, sample.mem_used_gb]);
-    rxData.push([t, sample.net_rx_bps / 1048576]);
-    txData.push([t, sample.net_tx_bps / 1048576]);
+    rxData.push([t, sample.net_rx_bps / 1024]);
+    txData.push([t, sample.net_tx_bps / 1024]);
     while (tsData.length > BUFFER_POINTS) {
       tsData.shift(); cpuData.shift(); memData.shift(); rxData.shift(); txData.shift();
     }
