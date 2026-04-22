@@ -318,3 +318,37 @@ tr:hover td {
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   }
 }
+
+/* ─── VM Realtime panel ───────────────────────────────────── */
+.vm-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 8px 0 16px;
+}
+.vm-gauge {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+.vm-gauge-label {
+  font-size: 12px;
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+.vm-gauge-value {
+  font-size: 18px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.vm-status {
+  font-size: 12px;
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  vertical-align: middle;
+  background: rgba(255,255,255,0.08);
+}
+.vm-status.ok   { background: rgba(46, 204, 113, 0.15); color: #2ecc71; }
+.vm-status.warn { background: rgba(241, 196, 15, 0.15); color: #f1c40f; }

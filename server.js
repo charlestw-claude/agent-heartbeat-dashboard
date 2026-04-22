@@ -1,8 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const http = require('http');
 const { spawn } = require('child_process');
 const { initDb, getDb } = require('./db/database');
+const { initMetricsSchema } = require('./db/metrics-schema');
+const collector = require('./metrics/collector');
+const rollup = require('./metrics/rollup');
+const archive = require('./metrics/archive');
+const wsHub = require('./metrics/ws');
 
 const app = express();
 const PORT = process.env.PORT || 3900;
@@ -19,6 +25,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Initialize database
 initDb();
+initMetricsSchema();
 
 // ─── API Routes ─────────────────────────────────────────────
 
@@ -233,11 +240,67 @@ app.post('/api/check-now', (req, res) => {
   });
 });
 
+// ─── VM metrics ─────────────────────────────────────────────
+
+// GET /api/metrics/recent?minutes=15 — raw 1s samples for the live chart
+app.get('/api/metrics/recent', (req, res) => {
+  const minutes = Math.min(parseInt(req.query.minutes) || 15, 120);
+  const from = Math.floor(Date.now() / 1000) - (minutes * 60);
+  const rows = getDb().prepare(`
+    SELECT ts, cpu_pct, mem_used_gb, mem_total_gb, net_rx_bps, net_tx_bps, disk_read_bps, disk_write_bps
+    FROM vm_metrics_raw
+    WHERE ts >= ?
+    ORDER BY ts
+  `).all(from);
+  res.json(rows);
+});
+
+// GET /api/metrics/1min?hours=24
+app.get('/api/metrics/1min', (req, res) => {
+  const hours = Math.min(parseInt(req.query.hours) || 24, 24 * 30);
+  const from = Math.floor(Date.now() / 1000) - (hours * 3600);
+  const rows = getDb().prepare(`
+    SELECT ts, cpu_pct_avg, cpu_pct_max, mem_used_gb_avg, mem_used_gb_max,
+           net_rx_bps_avg, net_tx_bps_avg, disk_read_bps_avg, disk_write_bps_avg
+    FROM vm_metrics_1min
+    WHERE ts >= ?
+    ORDER BY ts
+  `).all(from);
+  res.json(rows);
+});
+
+// GET /api/metrics/hourly?days=90
+app.get('/api/metrics/hourly', (req, res) => {
+  const days = Math.min(parseInt(req.query.days) || 30, 3650);
+  const from = Math.floor(Date.now() / 1000) - (days * 86400);
+  const rows = getDb().prepare(`
+    SELECT ts, cpu_pct_avg, cpu_pct_max, mem_used_gb_avg, mem_used_gb_max,
+           net_rx_bps_avg, net_tx_bps_avg, disk_read_bps_avg, disk_write_bps_avg
+    FROM vm_metrics_hourly
+    WHERE ts >= ?
+    ORDER BY ts
+  `).all(from);
+  res.json(rows);
+});
+
 // Fallback: serve index.html for SPA
 app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = http.createServer(app);
+wsHub.attach(server);
+
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Agent Heartbeat Dashboard running on http://0.0.0.0:${PORT}`);
+  collector.start();
+  rollup.start();
+  archive.start();
+});
+
+process.on('SIGTERM', () => {
+  collector.stop();
+  rollup.stop();
+  archive.stop();
+  server.close(() => process.exit(0));
 });

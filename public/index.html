@@ -49,6 +49,32 @@
       <div id="heatmapChart" class="chart tall"></div>
     </section>
 
+    <!-- VM Realtime Metrics -->
+    <section class="chart-container full">
+      <h2>VM Realtime (1s)
+        <span id="vmMetricsStatus" class="vm-status">--</span>
+      </h2>
+      <div class="vm-metrics-row">
+        <div class="vm-gauge">
+          <div class="vm-gauge-label">CPU</div>
+          <div class="vm-gauge-value" id="vmCpu">-- %</div>
+        </div>
+        <div class="vm-gauge">
+          <div class="vm-gauge-label">RAM</div>
+          <div class="vm-gauge-value" id="vmMem">-- GB</div>
+        </div>
+        <div class="vm-gauge">
+          <div class="vm-gauge-label">Net RX / TX</div>
+          <div class="vm-gauge-value" id="vmNet">-- / --</div>
+        </div>
+        <div class="vm-gauge">
+          <div class="vm-gauge-label">Disk R / W</div>
+          <div class="vm-gauge-value" id="vmDisk">-- / --</div>
+        </div>
+      </div>
+      <div id="vmMetricsChart" class="chart tall"></div>
+    </section>
+
     <!-- Events -->
     <section class="chart-container full">
       <h2>Recent Events</h2>
@@ -69,5 +95,6 @@
   </div>
 
   <script src="app.js"></script>
+  <script src="app-metrics.js"></script>
 </body>
 </html>
