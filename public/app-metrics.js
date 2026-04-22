@@ -25,7 +25,7 @@
     cpu:  '#3b82f6',
     mem:  '#10b981',
     rx:   '#f59e0b',
-    tx:   '#a855f7',
+    tx:   '#fcd34d',
   };
 
   function isNarrow() {
@@ -105,15 +105,25 @@
           splitLine: { show: false },
         },
         {
-          type: 'value',
+          type: 'log',
+          logBase: 10,
           name: narrow ? '' : 'KB/s',
           position: 'right',
           offset: narrow ? 32 : 44,
-          min: 0,
+          min: 0.01,
+          max: 10000,
           nameTextStyle: { color: COLORS.rx, fontSize: 10 },
           axisLine: { show: false },
           axisTick: { show: false },
-          axisLabel: { color: COLORS.rx, fontSize: 10, formatter: (v) => v >= 1000 ? (v / 1000).toFixed(1) + 'M' : Math.round(v) },
+          axisLabel: {
+            color: COLORS.rx,
+            fontSize: 10,
+            formatter: (v) => {
+              if (v >= 1000) return (v / 1000) + 'M';
+              if (v >= 1) return v + 'K';
+              return (v * 1000) + 'B';
+            },
+          },
           splitLine: { show: false },
         },
       ],
@@ -158,8 +168,9 @@
     tsData.push(t);
     cpuData.push([t, sample.cpu_pct]);
     memData.push([t, sample.mem_used_gb]);
-    rxData.push([t, sample.net_rx_bps / 1024]);
-    txData.push([t, sample.net_tx_bps / 1024]);
+    // Floor at 0.01 KB/s (10 B/s) so log scale has something to plot during idle
+    rxData.push([t, Math.max(0.01, (sample.net_rx_bps || 0) / 1024)]);
+    txData.push([t, Math.max(0.01, (sample.net_tx_bps || 0) / 1024)]);
     while (tsData.length > BUFFER_POINTS) {
       tsData.shift(); cpuData.shift(); memData.shift(); rxData.shift(); txData.shift();
     }

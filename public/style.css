@@ -354,7 +354,7 @@ tr:hover td {
 .vm-gauge.cpu::before  { background: var(--blue); }
 .vm-gauge.mem::before  { background: var(--green); }
 .vm-gauge.net::before  { background: var(--orange); }
-.vm-gauge.disk::before { background: var(--purple); }
+.vm-gauge.disk::before { background: #06b6d4; }
 
 .vm-gauge:hover {
   border-color: rgba(255, 255, 255, 0.12);
