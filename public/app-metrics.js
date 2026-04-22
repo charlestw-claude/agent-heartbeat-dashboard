@@ -38,7 +38,9 @@
       backgroundColor: 'transparent',
       textStyle: { color: '#c5c9d9' },
       color: [COLORS.cpu, COLORS.mem, COLORS.rx, COLORS.tx],
-      animation: false,
+      animation: true,
+      animationDurationUpdate: 900,
+      animationEasingUpdate: 'linear',
       tooltip: {
         trigger: 'axis',
         backgroundColor: '#1a1d27',
