@@ -68,7 +68,16 @@
         max: now,
         axisLine: { lineStyle: { color: '#2e3345' } },
         axisLabel: { color: '#9ba0b5', fontSize: 10, hideOverlap: true },
-        splitLine: { show: false },
+        splitNumber: narrow ? 4 : 6,
+        splitLine: {
+          show: true,
+          lineStyle: { color: 'rgba(120, 130, 160, 0.12)', width: 1 },
+        },
+        minorTick: { show: true, splitNumber: 4 },
+        minorSplitLine: {
+          show: true,
+          lineStyle: { color: 'rgba(120, 130, 160, 0.05)', width: 1 },
+        },
       },
       yAxis: [
         {
@@ -77,11 +86,12 @@
           min: 0,
           max: 100,
           position: 'left',
+          interval: 20,
           nameTextStyle: { color: '#9ba0b5', fontSize: 10 },
           axisLine: { show: false },
           axisTick: { show: false },
           axisLabel: { color: '#9ba0b5', fontSize: 10 },
-          splitLine: { lineStyle: { color: '#2e334522' } },
+          splitLine: { lineStyle: { color: 'rgba(120, 130, 160, 0.12)', width: 1 } },
         },
         {
           type: 'value',
@@ -95,10 +105,23 @@
         },
       ],
       series: [
-        { name: 'CPU %', type: 'line', showSymbol: false, yAxisIndex: 0, data: cpuData, lineStyle: { width: 1.8 }, smooth: 0.2 },
-        { name: 'RAM GB', type: 'line', showSymbol: false, yAxisIndex: 1, data: memData, lineStyle: { width: 1.8 }, smooth: 0.2 },
-        { name: 'Net RX MB/s', type: 'line', showSymbol: false, yAxisIndex: 1, data: rxData, lineStyle: { width: 1.2 } },
-        { name: 'Net TX MB/s', type: 'line', showSymbol: false, yAxisIndex: 1, data: txData, lineStyle: { width: 1.2 } },
+        {
+          name: 'CPU %', type: 'line', showSymbol: false, yAxisIndex: 0,
+          data: cpuData,
+          lineStyle: { width: 2, color: COLORS.cpu },
+          areaStyle: {
+            color: {
+              type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+              colorStops: [
+                { offset: 0, color: 'rgba(59, 130, 246, 0.35)' },
+                { offset: 1, color: 'rgba(59, 130, 246, 0)' },
+              ],
+            },
+          },
+        },
+        { name: 'RAM GB', type: 'line', showSymbol: false, yAxisIndex: 1, data: memData, lineStyle: { width: 2, color: COLORS.mem } },
+        { name: 'Net RX MB/s', type: 'line', showSymbol: false, yAxisIndex: 1, data: rxData, lineStyle: { width: 1.4, color: COLORS.rx } },
+        { name: 'Net TX MB/s', type: 'line', showSymbol: false, yAxisIndex: 1, data: txData, lineStyle: { width: 1.4, color: COLORS.tx } },
       ],
     };
   }
