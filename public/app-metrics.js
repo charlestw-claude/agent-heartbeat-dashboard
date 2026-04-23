@@ -16,7 +16,13 @@
   const uptimeEl = document.getElementById('vmUptime');
   const agentsTbody = document.getElementById('vmAgentsTbody');
   const agentsCountEl = document.getElementById('vmAgentsCount');
-  const agentsDetailEl = document.querySelector('.vm-agents-detail');
+  const agentsDetailEl = document.querySelector('.vm-agents-detail:not(.vm-caches-detail)');
+  const cachesDetailEl = document.querySelector('.vm-caches-detail');
+  const cachesTbody = document.getElementById('vmCachesTbody');
+  const cachesTotalEl = document.getElementById('vmCachesTotal');
+  const cachesRefreshBtn = document.getElementById('vmCachesRefresh');
+  const diskGauge = diskFreeEl ? diskFreeEl.closest('.vm-gauge') : null;
+  const pagefileGauge = pagefileEl ? pagefileEl.closest('.vm-gauge') : null;
 
   function isNarrow() { return window.innerWidth <= 640; }
 
@@ -44,6 +50,27 @@
     if (mb === null || mb === undefined) return '--';
     if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
     return mb.toFixed(0) + ' MB';
+  }
+
+  function fmtSize(bytes) {
+    if (bytes == null) return '--';
+    const gb = bytes / (1024 ** 3);
+    if (gb >= 1) return gb.toFixed(2) + ' GB';
+    const mb = bytes / (1024 ** 2);
+    if (mb >= 1) return mb.toFixed(0) + ' MB';
+    const kb = bytes / 1024;
+    if (kb >= 1) return kb.toFixed(0) + ' KB';
+    return bytes + ' B';
+  }
+
+  // Toggle warn/crit classes on a gauge based on a percent reading.
+  // `invert=true` means "low value is bad" (e.g., disk free %).
+  function applyAlert(el, pct, warnAt, critAt, invert) {
+    if (!el || pct == null || isNaN(pct)) return;
+    el.classList.remove('warn', 'crit');
+    const x = invert ? 100 - pct : pct;
+    if (x >= critAt) el.classList.add('crit');
+    else if (x >= warnAt) el.classList.add('warn');
   }
 
   // ─── Generic live-scroll line chart factory ──────────────────
@@ -211,6 +238,10 @@
     if (sample.disk_free_gb != null) {
       const total = sample.disk_total_gb ? ' / ' + sample.disk_total_gb.toFixed(0) + ' GB' : ' GB';
       diskFreeEl.textContent = sample.disk_free_gb.toFixed(1) + total;
+      if (sample.disk_total_gb) {
+        const freePct = (sample.disk_free_gb / sample.disk_total_gb) * 100;
+        applyAlert(diskGauge, freePct, 20, 10, true);
+      }
     } else {
       diskFreeEl.textContent = '-- GB';
     }
@@ -218,6 +249,10 @@
     if (sample.pagefile_used_gb != null) {
       const total = sample.pagefile_total_gb ? ' / ' + sample.pagefile_total_gb.toFixed(0) + ' GB' : ' GB';
       pagefileEl.textContent = sample.pagefile_used_gb.toFixed(1) + total;
+      if (sample.pagefile_total_gb) {
+        const usedPct = (sample.pagefile_used_gb / sample.pagefile_total_gb) * 100;
+        applyAlert(pagefileGauge, usedPct, 75, 90, false);
+      }
     } else {
       pagefileEl.textContent = '-- GB';
     }
@@ -267,6 +302,55 @@
     agentsDetailEl.addEventListener('toggle', () => {
       if (agentsDetailEl.open) { fetchAgents(); startAgentsPolling(); }
       else stopAgentsPolling();
+    });
+  }
+
+  // ─── Disk caches panel (fetched on open + manual refresh) ───
+  function renderCaches(data) {
+    const entries = data && Array.isArray(data.entries) ? data.entries : [];
+    if (cachesTotalEl) cachesTotalEl.textContent = `(${fmtSize(data.total_bytes || 0)})`;
+    if (!cachesTbody) return;
+    cachesTbody.innerHTML = entries.map((e) => {
+      let tag, tagClass;
+      if (!e.exists) { tag = 'MISSING'; tagClass = 'missing'; }
+      else if (e.protected) { tag = 'PROTECTED'; tagClass = 'protected'; }
+      else { tag = 'SAFE TO CLEAR'; tagClass = 'safe'; }
+      return `
+        <tr>
+          <td>
+            <div>${e.label}</div>
+            <div class="vm-cache-note" style="margin-top:2px">${(e.paths || []).join('<br>')}</div>
+          </td>
+          <td class="num">${e.exists ? fmtSize(e.size_bytes) : '--'}</td>
+          <td><span class="vm-cache-tag ${tagClass}">${tag}</span></td>
+          <td><div class="vm-cache-note">${e.note || ''}</div></td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  async function fetchCaches({ force = false } = {}) {
+    if (cachesRefreshBtn) cachesRefreshBtn.classList.add('spinning');
+    try {
+      const r = await fetch('/api/disk/caches' + (force ? '?refresh=1' : ''));
+      if (r.ok) renderCaches(await r.json());
+    } catch {}
+    finally {
+      if (cachesRefreshBtn) cachesRefreshBtn.classList.remove('spinning');
+    }
+  }
+
+  if (cachesDetailEl) {
+    cachesDetailEl.addEventListener('toggle', () => {
+      if (cachesDetailEl.open) fetchCaches();
+    });
+  }
+
+  if (cachesRefreshBtn) {
+    cachesRefreshBtn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      fetchCaches({ force: true });
     });
   }
 

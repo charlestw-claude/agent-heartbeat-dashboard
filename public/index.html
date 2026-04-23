@@ -87,6 +87,21 @@
           </table>
         </div>
       </details>
+      <details class="vm-agents-detail vm-caches-detail">
+        <summary>
+          Disk caches
+          <span id="vmCachesTotal" class="vm-sub-count">(--)</span>
+          <button id="vmCachesRefresh" class="vm-caches-refresh" title="Rescan now (expensive)" type="button">↻</button>
+        </summary>
+        <div class="vm-agents-table-wrap">
+          <table class="vm-agents-table vm-caches-table">
+            <thead>
+              <tr><th>Cache</th><th class="num">Size</th><th>Status</th><th>Note</th></tr>
+            </thead>
+            <tbody id="vmCachesTbody"></tbody>
+          </table>
+        </div>
+      </details>
     </section>
 
     <!-- Charts Row -->

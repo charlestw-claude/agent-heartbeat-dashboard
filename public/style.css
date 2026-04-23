@@ -415,6 +415,38 @@ tr:hover td {
   border-color: rgba(255, 255, 255, 0.12);
 }
 
+/* Alert states — overridden after base ::before background so they win */
+.vm-gauge.warn {
+  border-color: rgba(234, 179, 8, 0.4);
+  background: rgba(234, 179, 8, 0.04);
+}
+.vm-gauge.warn::before {
+  background: var(--yellow);
+  opacity: 1;
+}
+.vm-gauge.warn .vm-gauge-value {
+  color: #facc15;
+}
+
+.vm-gauge.crit {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.06);
+  animation: vm-crit-pulse 2s ease-in-out infinite;
+}
+.vm-gauge.crit::before {
+  background: var(--red);
+  opacity: 1;
+  width: 4px;
+}
+.vm-gauge.crit .vm-gauge-value {
+  color: #f87171;
+}
+
+@keyframes vm-crit-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+  50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.08); }
+}
+
 .vm-gauge-label {
   font-size: 11px;
   font-weight: 600;
@@ -560,6 +592,64 @@ tr:hover td {
 
 .vm-agents-table tbody tr:hover td {
   background: rgba(255, 255, 255, 0.02);
+}
+
+/* ─── Disk caches table (shares agents-table base styling) ──── */
+.vm-caches-refresh {
+  margin-left: 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  vertical-align: middle;
+  transition: color 0.15s, border-color 0.15s;
+}
+.vm-caches-refresh:hover {
+  color: var(--text);
+  border-color: #3e4358;
+}
+.vm-caches-refresh.spinning {
+  animation: spin 0.8s linear infinite;
+  color: var(--text);
+}
+
+.vm-caches-table td {
+  vertical-align: top;
+}
+
+.vm-cache-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+.vm-cache-tag.safe {
+  color: var(--green);
+  background: var(--green-dim);
+}
+.vm-cache-tag.protected {
+  color: var(--red);
+  background: var(--red-dim);
+}
+.vm-cache-tag.missing {
+  color: var(--text-dim);
+  background: var(--surface2);
+}
+
+.vm-cache-note {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.4;
 }
 
 /* ─── Responsive ─────────────────────────────────────────── */

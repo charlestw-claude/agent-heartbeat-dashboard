@@ -8,6 +8,7 @@ const { initMetricsSchema } = require('./db/metrics-schema');
 const collector = require('./metrics/collector');
 const rollup = require('./metrics/rollup');
 const archive = require('./metrics/archive');
+const diskCaches = require('./metrics/disk-caches');
 const wsHub = require('./metrics/ws');
 
 const app = express();
@@ -261,6 +262,12 @@ app.get('/api/metrics/recent', (req, res) => {
 // GET /api/metrics/agents — current per-process RSS for bun.exe / claude.exe
 app.get('/api/metrics/agents', (req, res) => {
   res.json(collector.getAgentsBreakdown());
+});
+
+// GET /api/disk/caches — npm/pip/puppeteer cache sizes (10-min TTL; ?refresh=1 forces rescan)
+app.get('/api/disk/caches', (req, res) => {
+  const force = req.query.refresh === '1';
+  res.json(diskCaches.getInfo({ force }));
 });
 
 // GET /api/metrics/1min?hours=24
