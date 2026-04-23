@@ -16,7 +16,12 @@ const { getDb } = require('../db/database');
 
 const POLL_INTERVAL_MS = 1000;
 const BATCH_FLUSH_MS = 5000;
+// si.processes() is expensive on Windows (~500ms–1s), so we scan the full
+// process tree at a relaxed cadence. netstat is cheap (~26ms), so the active
+// socket check runs faster and patches the cached breakdown in place — the
+// UI sees active-flag changes at NET_REFRESH_MS resolution.
 const PROC_REFRESH_MS = 5000;
+const NET_REFRESH_MS = 2000;
 const AGENT_PROC_NAMES = new Set(['bun.exe', 'claude.exe']);
 
 // Agent identity lives in the cmd.exe ancestor that launched the agent via
@@ -33,6 +38,7 @@ let listeners = [];
 let pollTimer = null;
 let flushTimer = null;
 let procTimer = null;
+let netTimer = null;
 let lastSample = null;
 let lastAgentsMemMB = null;
 let lastAgentsBreakdown = { ts: 0, total_mem_mb: null, agents: [], unattributed: [] };
@@ -144,6 +150,29 @@ async function refreshAgentProcesses() {
   } catch (err) {
     console.error('[metrics] process probe error:', err.message);
   }
+}
+
+// Fast path: re-check just the active TLS sockets and patch the cached
+// breakdown's active flags in place. Runs at NET_REFRESH_MS so the UI sees
+// Thinking transitions quickly without paying the cost of a full si.processes
+// scan every cycle.
+async function refreshActiveSockets() {
+  const activePids = await getActiveTlsPids();
+  const snap = lastAgentsBreakdown;
+  if (!snap || !Array.isArray(snap.agents)) return;
+
+  for (const a of snap.agents) {
+    let agentActive = false;
+    for (const p of a.processes) {
+      p.active = activePids.has(p.pid);
+      if (p.active && p.name === 'claude.exe') agentActive = true;
+    }
+    a.active = agentActive;
+  }
+  for (const p of snap.unattributed || []) {
+    p.active = activePids.has(p.pid);
+  }
+  snap.ts = Math.floor(Date.now() / 1000);
 }
 
 async function pollOnce() {
@@ -265,13 +294,15 @@ function start() {
   pollTimer = setInterval(pollOnce, POLL_INTERVAL_MS);
   flushTimer = setInterval(flush, BATCH_FLUSH_MS);
   procTimer = setInterval(refreshAgentProcesses, PROC_REFRESH_MS);
-  console.log(`[metrics] collector started (poll=${POLL_INTERVAL_MS}ms, flush=${BATCH_FLUSH_MS}ms, proc=${PROC_REFRESH_MS}ms)`);
+  netTimer = setInterval(refreshActiveSockets, NET_REFRESH_MS);
+  console.log(`[metrics] collector started (poll=${POLL_INTERVAL_MS}ms, flush=${BATCH_FLUSH_MS}ms, proc=${PROC_REFRESH_MS}ms, net=${NET_REFRESH_MS}ms)`);
 }
 
 function stop() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   if (flushTimer) { clearInterval(flushTimer); flushTimer = null; }
   if (procTimer) { clearInterval(procTimer); procTimer = null; }
+  if (netTimer) { clearInterval(netTimer); netTimer = null; }
   flush();
 }
 

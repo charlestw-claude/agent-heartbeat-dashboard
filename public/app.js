@@ -551,6 +551,8 @@ refresh();
 setInterval(() => refresh(), REFRESH_INTERVAL);
 
 // Agent activity polled faster than the 60s card refresh so Thinking /
-// Working / Idle reflects the current LLM/tool work.
+// Working / Idle reflects the current LLM/tool work. Server-side, the
+// active-socket check also runs at 2s cadence (see NET_REFRESH_MS), so
+// socket-state transitions surface within ~2–4s end-to-end.
 pollAgentActivity();
-setInterval(pollAgentActivity, 5000);
+setInterval(pollAgentActivity, 2000);
