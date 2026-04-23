@@ -228,14 +228,28 @@ async function pollAgentActivity() {
 
 // ─── Status Cards ───────────────────────────────────────────
 
+// Parse a raw model ID (e.g. "claude-opus-4-7", "claude-haiku-4-5-20251001")
+// into a compact display label and family tag for pill coloring.
+function parseModel(id) {
+  if (!id) return { label: '', family: '' };
+  const m = String(id).match(/^claude-(opus|sonnet|haiku)-(\d+)-(\d+)/i);
+  if (!m) return { label: id, family: 'unknown' };
+  const family = m[1].toLowerCase();
+  const title = family.charAt(0).toUpperCase() + family.slice(1);
+  return { label: `${title} ${m[2]}.${m[3]}`, family };
+}
+
 async function renderStatusCards() {
-  const [status, uptime] = await Promise.all([
+  const [status, uptime, models] = await Promise.all([
     fetchJson('/api/status'),
     fetchJson('/api/uptime?days=7'),
+    fetchJson('/api/agents/models').catch(() => []),
   ]);
 
   const uptimeMap = {};
   uptime.forEach(u => uptimeMap[u.agent_name] = u);
+  const modelMap = {};
+  (Array.isArray(models) ? models : []).forEach((m) => { modelMap[m.agent] = m.model; });
 
   const container = document.getElementById('statusCards');
 
@@ -250,12 +264,17 @@ async function renderStatusCards() {
     const uptimePctStr = uptimePct == null ? '--' : uptimePct;
     const statusClass = agent.status || 'unknown';
     const agentKey = normalizeAgentKey(agent.agent_name);
+    const mdl = parseModel(modelMap[agent.agent_name]);
+    const modelPill = mdl.label
+      ? `<span class="card-model family-${mdl.family}" title="${modelMap[agent.agent_name]}">${mdl.label}</span>`
+      : '';
 
     return `
       <div class="status-card ${statusClass}" data-agent-key="${agentKey}">
         <div class="card-header">
           <span class="card-name">${agent.agent_name.replace('Claude-', '')}</span>
           <div class="card-badges">
+            ${modelPill}
             <span class="card-status ${statusClass}">${statusClass}</span>
             <span class="card-signal"
                   data-signal-for="${agentKey}"
