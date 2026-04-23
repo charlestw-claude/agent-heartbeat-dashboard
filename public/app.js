@@ -130,21 +130,29 @@ function applySignalsToCards(byAgent) {
   });
 }
 
+function applyAgentsBreakdown(data) {
+  const agents = (data && Array.isArray(data.agents)) ? data.agents : [];
+  const byAgent = {};
+  for (const a of agents) {
+    byAgent[normalizeAgentKey(a.agent)] = {
+      cpu: a.total_cpu_pct,
+      active: a.active === true,
+    };
+  }
+  lastAgentSignals = byAgent;
+  applySignalsToCards(byAgent);
+}
+
+// Exposed so the /ws/metrics handler in app-metrics.js can push updates
+// directly when the server detects an active-socket change.
+window.applyAgentsBreakdown = applyAgentsBreakdown;
+
 async function pollAgentActivity() {
   try {
     const r = await fetch('/api/metrics/agents');
     if (!r.ok) return;
     const data = await r.json();
-    const agents = (data && Array.isArray(data.agents)) ? data.agents : [];
-    const byAgent = {};
-    for (const a of agents) {
-      byAgent[normalizeAgentKey(a.agent)] = {
-        cpu: a.total_cpu_pct,
-        active: a.active === true,
-      };
-    }
-    lastAgentSignals = byAgent;
-    applySignalsToCards(byAgent);
+    applyAgentsBreakdown(data);
   } catch {}
 }
 
@@ -550,9 +558,10 @@ document.getElementById('refreshBtn')?.addEventListener('click', () => refresh({
 refresh();
 setInterval(() => refresh(), REFRESH_INTERVAL);
 
-// Agent activity polled faster than the 60s card refresh so Thinking /
-// Working / Idle reflects the current LLM/tool work. Server-side, the
-// active-socket check also runs at 2s cadence (see NET_REFRESH_MS), so
-// socket-state transitions surface within ~2–4s end-to-end.
+// Primary delivery of agent activity is a WS push from /ws/metrics — the
+// server broadcasts an `agents` message every time refreshAgentProcesses or
+// refreshActiveSockets updates the cached breakdown (~2s worst case).
+// We still prime once here and keep a slow polling fallback for robustness
+// in case the WS is temporarily disconnected.
 pollAgentActivity();
-setInterval(pollAgentActivity, 2000);
+setInterval(pollAgentActivity, 30000);

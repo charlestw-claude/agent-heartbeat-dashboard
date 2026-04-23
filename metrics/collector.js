@@ -35,6 +35,7 @@ const MAX_PARENT_HOPS = 12;
 let lastNet = null;
 let buffer = [];
 let listeners = [];
+let agentsListeners = [];
 let pollTimer = null;
 let flushTimer = null;
 let procTimer = null;
@@ -147,8 +148,15 @@ async function refreshAgentProcesses() {
       agents,
       unattributed: unattributed.sort((x, y) => y.rss_mb - x.rss_mb),
     };
+    emitAgents();
   } catch (err) {
     console.error('[metrics] process probe error:', err.message);
+  }
+}
+
+function emitAgents() {
+  for (const fn of agentsListeners) {
+    try { fn(lastAgentsBreakdown); } catch {}
   }
 }
 
@@ -173,6 +181,7 @@ async function refreshActiveSockets() {
     p.active = activePids.has(p.pid);
   }
   snap.ts = Math.floor(Date.now() / 1000);
+  emitAgents();
 }
 
 async function pollOnce() {
@@ -311,7 +320,12 @@ function onSample(fn) {
   return () => { listeners = listeners.filter((f) => f !== fn); };
 }
 
+function onAgents(fn) {
+  agentsListeners.push(fn);
+  return () => { agentsListeners = agentsListeners.filter((f) => f !== fn); };
+}
+
 function getLastSample() { return lastSample; }
 function getAgentsBreakdown() { return lastAgentsBreakdown; }
 
-module.exports = { start, stop, onSample, getLastSample, getAgentsBreakdown };
+module.exports = { start, stop, onSample, onAgents, getLastSample, getAgentsBreakdown };

@@ -542,6 +542,12 @@
       try {
         const msg = JSON.parse(ev.data);
         if (msg.type === 'sample' && msg.data) handleSample(msg.data);
+        else if (msg.type === 'agents' && msg.data) {
+          renderAgents(msg.data);
+          if (typeof window.applyAgentsBreakdown === 'function') {
+            window.applyAgentsBreakdown(msg.data);
+          }
+        }
       } catch {}
     };
     ws.onclose = () => {
