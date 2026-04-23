@@ -35,7 +35,10 @@
     <section class="chart-container full vm-panel">
       <div class="panel-header">
         <h2>VM Realtime <span class="panel-sub">· 1s sampling · 2-min window</span></h2>
-        <span id="vmMetricsStatus" class="vm-status">--</span>
+        <div class="vm-header-right">
+          <span id="vmUptime" class="vm-uptime" title="VM uptime">up --</span>
+          <span id="vmMetricsStatus" class="vm-status">--</span>
+        </div>
       </div>
       <div class="vm-metrics-row">
         <div class="vm-gauge cpu">
@@ -46,13 +49,21 @@
           <div class="vm-gauge-label">RAM</div>
           <div class="vm-gauge-value" id="vmMem">-- GB</div>
         </div>
+        <div class="vm-gauge disk">
+          <div class="vm-gauge-label">Disk C: Free</div>
+          <div class="vm-gauge-value" id="vmDiskFree">-- GB</div>
+        </div>
+        <div class="vm-gauge pagefile">
+          <div class="vm-gauge-label">Pagefile</div>
+          <div class="vm-gauge-value" id="vmPagefile">-- GB</div>
+        </div>
         <div class="vm-gauge net">
           <div class="vm-gauge-label">Net RX / TX</div>
           <div class="vm-gauge-value" id="vmNet">-- / --</div>
         </div>
-        <div class="vm-gauge disk">
-          <div class="vm-gauge-label">Disk R / W</div>
-          <div class="vm-gauge-value" id="vmDisk">-- / --</div>
+        <div class="vm-gauge agents">
+          <div class="vm-gauge-label">Agents RSS</div>
+          <div class="vm-gauge-value" id="vmAgents">-- MB</div>
         </div>
       </div>
       <div class="vm-charts-grid">
@@ -65,6 +76,17 @@
           <div id="vmNetChart" class="vm-chart"></div>
         </div>
       </div>
+      <details class="vm-agents-detail">
+        <summary>Agent processes <span id="vmAgentsCount" class="vm-sub-count">(--)</span></summary>
+        <div class="vm-agents-table-wrap">
+          <table class="vm-agents-table">
+            <thead>
+              <tr><th>Name</th><th>PID</th><th class="num">RSS (MB)</th><th class="num">CPU %</th></tr>
+            </thead>
+            <tbody id="vmAgentsTbody"></tbody>
+          </table>
+        </div>
+      </details>
     </section>
 
     <!-- Charts Row -->

@@ -10,7 +10,13 @@
   const cpuEl = document.getElementById('vmCpu');
   const memEl = document.getElementById('vmMem');
   const netEl = document.getElementById('vmNet');
-  const diskEl = document.getElementById('vmDisk');
+  const diskFreeEl = document.getElementById('vmDiskFree');
+  const pagefileEl = document.getElementById('vmPagefile');
+  const agentsEl = document.getElementById('vmAgents');
+  const uptimeEl = document.getElementById('vmUptime');
+  const agentsTbody = document.getElementById('vmAgentsTbody');
+  const agentsCountEl = document.getElementById('vmAgentsCount');
+  const agentsDetailEl = document.querySelector('.vm-agents-detail');
 
   function isNarrow() { return window.innerWidth <= 640; }
 
@@ -21,6 +27,23 @@
     const kb = bps / 1024;
     if (kb >= 1) return kb.toFixed(0) + ' KB/s';
     return Math.round(bps) + ' B/s';
+  }
+
+  function fmtUptime(sec) {
+    if (sec === null || sec === undefined) return '--';
+    const s = Math.max(0, Math.floor(sec));
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    if (d > 0) return `${d}d ${h}h`;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+  }
+
+  function fmtMem(mb) {
+    if (mb === null || mb === undefined) return '--';
+    if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
+    return mb.toFixed(0) + ' MB';
   }
 
   // ─── Generic live-scroll line chart factory ──────────────────
@@ -184,13 +207,68 @@
       memEl.textContent = (sample.mem_used_gb || 0).toFixed(1) + ' GB';
     }
     netEl.textContent = fmtBytes(sample.net_rx_bps) + ' / ' + fmtBytes(sample.net_tx_bps);
-    diskEl.textContent = fmtBytes(sample.disk_read_bps) + ' / ' + fmtBytes(sample.disk_write_bps);
+
+    if (sample.disk_free_gb != null) {
+      const total = sample.disk_total_gb ? ' / ' + sample.disk_total_gb.toFixed(0) + ' GB' : ' GB';
+      diskFreeEl.textContent = sample.disk_free_gb.toFixed(1) + total;
+    } else {
+      diskFreeEl.textContent = '-- GB';
+    }
+
+    if (sample.pagefile_used_gb != null) {
+      const total = sample.pagefile_total_gb ? ' / ' + sample.pagefile_total_gb.toFixed(0) + ' GB' : ' GB';
+      pagefileEl.textContent = sample.pagefile_used_gb.toFixed(1) + total;
+    } else {
+      pagefileEl.textContent = '-- GB';
+    }
+
+    agentsEl.textContent = fmtMem(sample.agents_mem_mb);
+    if (uptimeEl) uptimeEl.textContent = 'up ' + fmtUptime(sample.uptime_s);
   }
 
   fetch('/api/metrics/recent?minutes=2')
     .then((r) => r.json())
     .then((rows) => { for (const r of rows) handleSample(r); })
     .catch(() => {});
+
+  // ─── Per-agent process RSS table (5s polling when open) ─────
+  function renderAgents(data) {
+    const procs = data && Array.isArray(data.processes) ? data.processes : [];
+    if (agentsCountEl) agentsCountEl.textContent = `(${procs.length})`;
+    if (!agentsTbody) return;
+    agentsTbody.innerHTML = procs.map((p) => `
+      <tr>
+        <td>${p.name || ''}</td>
+        <td>${p.pid || ''}</td>
+        <td class="num">${(p.rss_mb || 0).toFixed(0)}</td>
+        <td class="num">${p.cpu_pct == null ? '--' : p.cpu_pct.toFixed(2)}</td>
+      </tr>
+    `).join('');
+  }
+
+  async function fetchAgents() {
+    try {
+      const r = await fetch('/api/metrics/agents');
+      if (r.ok) renderAgents(await r.json());
+    } catch {}
+  }
+
+  fetchAgents();
+  let agentsTimer = null;
+  function startAgentsPolling() {
+    if (agentsTimer) return;
+    agentsTimer = setInterval(fetchAgents, 5000);
+  }
+  function stopAgentsPolling() {
+    if (agentsTimer) { clearInterval(agentsTimer); agentsTimer = null; }
+  }
+
+  if (agentsDetailEl) {
+    agentsDetailEl.addEventListener('toggle', () => {
+      if (agentsDetailEl.open) { fetchAgents(); startAgentsPolling(); }
+      else stopAgentsPolling();
+    });
+  }
 
   let ws = null;
   let retryDelay = 1000;
