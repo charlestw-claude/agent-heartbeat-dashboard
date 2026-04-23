@@ -267,18 +267,73 @@
     .catch(() => {});
 
   // ─── Per-agent process RSS table (5s polling when open) ─────
+  // Rows are grouped by agent (identified via parent-chain command-line match).
+  // Each agent-summary row is clickable to reveal its child process rows.
+  const expandedAgents = new Set();
+
   function renderAgents(data) {
-    const procs = data && Array.isArray(data.processes) ? data.processes : [];
-    if (agentsCountEl) agentsCountEl.textContent = `(${procs.length})`;
+    const agents = data && Array.isArray(data.agents) ? data.agents : [];
+    const unattributed = data && Array.isArray(data.unattributed) ? data.unattributed : [];
+    const totalProcs = agents.reduce((s, a) => s + a.process_count, 0) + unattributed.length;
+    if (agentsCountEl) {
+      agentsCountEl.textContent = `(${agents.length} agent${agents.length === 1 ? '' : 's'}, ${totalProcs} proc${totalProcs === 1 ? '' : 's'})`;
+    }
     if (!agentsTbody) return;
-    agentsTbody.innerHTML = procs.map((p) => `
-      <tr>
-        <td>${p.name || ''}</td>
-        <td>${p.pid || ''}</td>
-        <td class="num">${(p.rss_mb || 0).toFixed(0)}</td>
-        <td class="num">${p.cpu_pct == null ? '--' : p.cpu_pct.toFixed(2)}</td>
-      </tr>
-    `).join('');
+
+    const rows = [];
+    for (const a of agents) {
+      const expanded = expandedAgents.has(a.agent);
+      rows.push(`
+        <tr class="agent-summary${expanded ? ' expanded' : ''}" data-agent="${a.agent}">
+          <td><span class="agent-toggle">${expanded ? '▾' : '▸'}</span> ${a.agent}</td>
+          <td class="num">${a.process_count}</td>
+          <td class="num">${a.total_rss_mb.toFixed(0)}</td>
+          <td class="num">${a.total_cpu_pct.toFixed(2)}</td>
+        </tr>
+      `);
+      if (expanded) {
+        for (const p of a.processes) {
+          rows.push(`
+            <tr class="agent-proc-row" data-parent="${a.agent}">
+              <td class="proc-name"><span class="proc-indent"></span>${p.name} <span class="proc-pid">${p.pid}</span></td>
+              <td class="num">-</td>
+              <td class="num">${p.rss_mb.toFixed(0)}</td>
+              <td class="num">${p.cpu_pct == null ? '--' : p.cpu_pct.toFixed(2)}</td>
+            </tr>
+          `);
+        }
+      }
+    }
+
+    if (unattributed.length) {
+      rows.push(`
+        <tr class="agent-unattributed-header"><td colspan="4">Unattributed (${unattributed.length})</td></tr>
+      `);
+      for (const p of unattributed) {
+        rows.push(`
+          <tr class="agent-proc-row">
+            <td class="proc-name"><span class="proc-indent"></span>${p.name} <span class="proc-pid">${p.pid}</span></td>
+            <td class="num">-</td>
+            <td class="num">${p.rss_mb.toFixed(0)}</td>
+            <td class="num">${p.cpu_pct == null ? '--' : p.cpu_pct.toFixed(2)}</td>
+          </tr>
+        `);
+      }
+    }
+
+    agentsTbody.innerHTML = rows.join('');
+  }
+
+  if (agentsTbody) {
+    agentsTbody.addEventListener('click', (ev) => {
+      const tr = ev.target.closest('tr.agent-summary');
+      if (!tr) return;
+      const name = tr.dataset.agent;
+      if (!name) return;
+      if (expandedAgents.has(name)) expandedAgents.delete(name);
+      else expandedAgents.add(name);
+      fetchAgents();
+    });
   }
 
   async function fetchAgents() {

@@ -594,6 +594,53 @@ tr:hover td {
   background: rgba(255, 255, 255, 0.02);
 }
 
+/* ─── Grouped agent rows (v1.4) ──────────────────────────── */
+.vm-agents-grouped .agent-summary {
+  cursor: pointer;
+  user-select: none;
+}
+.vm-agents-grouped .agent-summary td {
+  font-weight: 600;
+  color: var(--text);
+}
+.vm-agents-grouped .agent-summary .agent-toggle {
+  display: inline-block;
+  width: 12px;
+  color: var(--text-dim);
+  font-size: 10px;
+  margin-right: 4px;
+}
+.vm-agents-grouped .agent-summary.expanded td {
+  border-bottom-color: transparent;
+}
+.vm-agents-grouped .agent-proc-row td {
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.015);
+}
+.vm-agents-grouped .agent-proc-row .proc-indent {
+  display: inline-block;
+  width: 18px;
+}
+.vm-agents-grouped .agent-proc-row .proc-name::before {
+  content: "└";
+  color: var(--text-dim);
+  margin-right: 4px;
+}
+.vm-agents-grouped .proc-pid {
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-left: 4px;
+}
+.vm-agents-grouped .agent-unattributed-header td {
+  color: var(--text-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding-top: 10px;
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+}
+
 /* ─── Disk caches table (shares agents-table base styling) ──── */
 .vm-caches-refresh {
   margin-left: 8px;

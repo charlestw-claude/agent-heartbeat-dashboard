@@ -16,6 +16,14 @@ const BATCH_FLUSH_MS = 5000;
 const PROC_REFRESH_MS = 5000;
 const AGENT_PROC_NAMES = new Set(['bun.exe', 'claude.exe']);
 
+// Agent identity lives in the cmd.exe ancestor that launched the agent via
+// its .bat file (e.g. `cmd /k ...\Claude-Agent-02.bat`). bun.exe / claude.exe
+// processes themselves carry no agent identifier, so we walk the parent
+// chain (up to MAX_PARENT_HOPS) and match the first ancestor whose command
+// line contains one of the known agent names.
+const AGENT_NAME_PATTERN = /Claude-Agent-\d+|Claude-Deloitte|Claude-Quant-2|Claude-Quant|Claude-Guest-Agent|Guest-Agent/i;
+const MAX_PARENT_HOPS = 12;
+
 let lastNet = null;
 let buffer = [];
 let listeners = [];
@@ -24,30 +32,74 @@ let flushTimer = null;
 let procTimer = null;
 let lastSample = null;
 let lastAgentsMemMB = null;
-let lastAgentsBreakdown = { ts: 0, processes: [] };
+let lastAgentsBreakdown = { ts: 0, total_mem_mb: null, agents: [], unattributed: [] };
+
+function findAgentForProcess(p, byPid) {
+  let cur = byPid.get(p.parentPid);
+  for (let hops = 0; cur && hops < MAX_PARENT_HOPS; hops++) {
+    const haystack = (cur.command || '') + ' ' + (cur.path || '');
+    const m = haystack.match(AGENT_NAME_PATTERN);
+    if (m) return m[0];
+    cur = byPid.get(cur.parentPid);
+  }
+  return null;
+}
 
 async function refreshAgentProcesses() {
   try {
     const res = await si.processes();
     const list = Array.isArray(res && res.list) ? res.list : [];
-    const matched = [];
+    const byPid = new Map(list.map((p) => [p.pid, p]));
+
+    const byAgent = new Map();
+    const unattributed = [];
     let totalKb = 0;
+
     for (const p of list) {
       const name = (p.name || '').toLowerCase();
       if (!AGENT_PROC_NAMES.has(name)) continue;
       const memKb = p.memRss || p.mem_rss || 0;
       totalKb += memKb;
-      matched.push({
+      const proc = {
         pid: p.pid,
         name,
         rss_mb: memKb / 1024,
         cpu_pct: typeof p.cpu === 'number' ? p.cpu : null,
-      });
+      };
+      const agentName = findAgentForProcess(p, byPid);
+      if (agentName) {
+        if (!byAgent.has(agentName)) {
+          byAgent.set(agentName, {
+            agent: agentName,
+            process_count: 0,
+            total_rss_mb: 0,
+            total_cpu_pct: 0,
+            processes: [],
+          });
+        }
+        const bucket = byAgent.get(agentName);
+        bucket.processes.push(proc);
+        bucket.process_count += 1;
+        bucket.total_rss_mb += proc.rss_mb;
+        if (proc.cpu_pct != null) bucket.total_cpu_pct += proc.cpu_pct;
+      } else {
+        unattributed.push(proc);
+      }
     }
+
+    const agents = Array.from(byAgent.values())
+      .map((a) => ({
+        ...a,
+        processes: a.processes.sort((x, y) => y.rss_mb - x.rss_mb),
+      }))
+      .sort((a, b) => b.total_rss_mb - a.total_rss_mb);
+
     lastAgentsMemMB = totalKb / 1024;
     lastAgentsBreakdown = {
       ts: Math.floor(Date.now() / 1000),
-      processes: matched.sort((a, b) => b.rss_mb - a.rss_mb),
+      total_mem_mb: lastAgentsMemMB,
+      agents,
+      unattributed: unattributed.sort((x, y) => y.rss_mb - x.rss_mb),
     };
   } catch (err) {
     console.error('[metrics] process probe error:', err.message);
