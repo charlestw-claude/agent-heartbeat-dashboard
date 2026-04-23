@@ -74,22 +74,41 @@ function normalizeAgentKey(name) {
   return name.replace(/^Claude-/i, '').toLowerCase();
 }
 
+// Combine current-activity and 7-day-health into a single signal pill.
+// Activity wins when the agent is actually doing something; otherwise we
+// fall back to the long-run health tier so the pill always says something
+// meaningful.
+function computeSignal(cpuPct, uptimePct, statusClass) {
+  const act = activityTier(cpuPct);
+  if (act && act.level !== 'idle') {
+    return { level: act.level, text: act.text };
+  }
+  return healthTier(uptimePct, statusClass);
+}
+
 // Cache of latest per-agent CPU% keyed by normalized name, populated by a
 // 5s poll. Rendered card DOM stays alive across the 60s status refresh, so
-// updates just toggle class/text on .card-activity without re-rendering.
+// updates just toggle class/text on .card-signal without re-rendering.
 let lastActivityByAgent = {};
 
-function applyActivityToCards(byAgent) {
-  const nodes = document.querySelectorAll('.card-activity[data-activity-for]');
+const SIGNAL_CLASSES = ['thinking', 'working', 'idle', 'stable', 'flaky', 'unstable', 'down'];
+
+function applySignalsToCards(byAgent) {
+  const nodes = document.querySelectorAll('.card-signal[data-signal-for]');
   nodes.forEach((node) => {
-    const key = node.getAttribute('data-activity-for');
+    const key = node.getAttribute('data-signal-for');
+    const uptimeRaw = node.getAttribute('data-uptime');
+    const uptimePct = uptimeRaw === '' ? null : parseFloat(uptimeRaw);
+    const statusClass = node.getAttribute('data-status-class') || 'unknown';
     const cpu = byAgent[key];
-    const tier = activityTier(cpu);
-    node.classList.remove('thinking', 'working', 'idle');
-    if (tier) {
-      node.classList.add(tier.level);
-      node.textContent = tier.text;
-      node.title = `Current CPU: ${cpu.toFixed(1)}%`;
+    const signal = computeSignal(cpu, uptimePct, statusClass);
+    SIGNAL_CLASSES.forEach((c) => node.classList.remove(c));
+    if (signal) {
+      node.classList.add(signal.level);
+      node.textContent = signal.text;
+      node.title = cpu == null
+        ? `7d uptime: ${uptimePct == null ? '--' : uptimePct + '%'}`
+        : `CPU: ${cpu.toFixed(1)}% · 7d uptime: ${uptimePct == null ? '--' : uptimePct + '%'}`;
     } else {
       node.textContent = '';
       node.title = '';
@@ -108,7 +127,7 @@ async function pollAgentActivity() {
       byAgent[normalizeAgentKey(a.agent)] = a.total_cpu_pct;
     }
     lastActivityByAgent = byAgent;
-    applyActivityToCards(byAgent);
+    applySignalsToCards(byAgent);
   } catch {}
 }
 
@@ -135,7 +154,6 @@ async function renderStatusCards() {
     const uptimePct = ut ? ut.uptime_pct : null;
     const uptimePctStr = uptimePct == null ? '--' : uptimePct;
     const statusClass = agent.status || 'unknown';
-    const health = healthTier(uptimePct, statusClass);
     const agentKey = normalizeAgentKey(agent.agent_name);
 
     return `
@@ -144,8 +162,10 @@ async function renderStatusCards() {
           <span class="card-name">${agent.agent_name.replace('Claude-', '')}</span>
           <div class="card-badges">
             <span class="card-status ${statusClass}">${statusClass}</span>
-            ${health ? `<span class="card-health ${health.level}">${health.text}</span>` : ''}
-            <span class="card-activity" data-activity-for="${agentKey}"></span>
+            <span class="card-signal"
+                  data-signal-for="${agentKey}"
+                  data-uptime="${uptimePct == null ? '' : uptimePct}"
+                  data-status-class="${statusClass}"></span>
           </div>
         </div>
         <div class="card-meta">
@@ -157,9 +177,9 @@ async function renderStatusCards() {
     `;
   }).join('');
 
-  // Paint activity pills immediately from whatever cached metrics we have;
-  // the 5s poll below keeps them fresh.
-  applyActivityToCards(lastActivityByAgent);
+  // Paint the combined signal pills from whatever cached metrics we have;
+  // the 5s poll keeps them fresh and promotes Working/Thinking when CPU rises.
+  applySignalsToCards(lastActivityByAgent);
 
   // Update header
   const onlineCount = status.filter(a => a.status === 'online').length;
