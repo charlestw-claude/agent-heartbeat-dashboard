@@ -5,7 +5,10 @@ const { onSample, onAgents, getLastSample, getAgentsBreakdown } = require('./col
 //   - `{ type: 'sample', data: <vm-sample> }` at 1Hz
 //   - `{ type: 'agents', data: <agents-breakdown> }` whenever the active-socket
 //     scan or full process scan updates (2s and 5s respectively)
+//   - `{ type: 'heartbeats', data: <heartbeats-batch> }` on each POST /api/heartbeat
 // On connect we send the last cached value of each so the UI paints immediately.
+
+let sendMessage = () => {};
 
 function attach(server) {
   const wss = new WebSocketServer({ server, path: '/ws/metrics' });
@@ -29,6 +32,8 @@ function attach(server) {
     }
   };
 
+  sendMessage = (msg) => broadcast(JSON.stringify(msg));
+
   onSample((sample) => {
     broadcast(JSON.stringify({ type: 'sample', data: sample }));
   });
@@ -41,4 +46,6 @@ function attach(server) {
   return wss;
 }
 
-module.exports = { attach };
+function send(msg) { sendMessage(msg); }
+
+module.exports = { attach, send };

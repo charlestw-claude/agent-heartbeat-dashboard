@@ -147,6 +147,57 @@ function applyAgentsBreakdown(data) {
 // directly when the server detects an active-socket change.
 window.applyAgentsBreakdown = applyAgentsBreakdown;
 
+// Heartbeat push — the server broadcasts every POST /api/heartbeat so the
+// status card ("Last seen", status pill, card bg class) updates within
+// milliseconds instead of waiting for the next 60s page refresh.
+function applyHeartbeatsPush(data) {
+  if (!data || !Array.isArray(data.agents)) return;
+  const ts = data.ts || new Date().toISOString();
+  let anyStatusChanged = false;
+  for (const a of data.agents) {
+    const key = normalizeAgentKey(a.name);
+    const card = document.querySelector(`.status-card[data-agent-key="${key}"]`);
+    if (!card) continue;
+
+    if (card.className !== `status-card ${a.status}`) {
+      card.className = `status-card ${a.status}`;
+      anyStatusChanged = true;
+    }
+    const statusPill = card.querySelector('.card-status');
+    if (statusPill) {
+      statusPill.className = `card-status ${a.status}`;
+      statusPill.textContent = a.status;
+    }
+    const lastSeenEl = card.querySelector('.card-lastseen');
+    if (lastSeenEl) {
+      lastSeenEl.setAttribute('data-ts', ts);
+      lastSeenEl.textContent = `Last seen: ${timeSince(ts)}`;
+    }
+    const pidEl = card.querySelector('.card-pid');
+    if (pidEl) pidEl.textContent = a.pid ? `PID: ${a.pid}` : '';
+
+    const signal = card.querySelector('.card-signal');
+    if (signal) signal.setAttribute('data-status-class', a.status);
+  }
+  if (anyStatusChanged) {
+    applySignalsToCards(lastAgentSignals);
+    const cards = document.querySelectorAll('.status-card');
+    const onlineCount = Array.from(cards).filter((c) => c.classList.contains('online')).length;
+    const header = document.getElementById('overallUptime');
+    if (header && cards.length > 0) header.textContent = `${onlineCount}/${cards.length} Online`;
+  }
+}
+window.applyHeartbeatsPush = applyHeartbeatsPush;
+
+// Tick relative "Last seen" labels each second so the text doesn't freeze
+// between heartbeat pushes.
+setInterval(() => {
+  document.querySelectorAll('.card-lastseen[data-ts]').forEach((el) => {
+    const ts = el.getAttribute('data-ts');
+    if (ts) el.textContent = `Last seen: ${timeSince(ts)}`;
+  });
+}, 1000);
+
 async function pollAgentActivity() {
   try {
     const r = await fetch('/api/metrics/agents');
@@ -195,8 +246,8 @@ async function renderStatusCards() {
         </div>
         <div class="card-meta">
           <span>Uptime (7d): ${uptimePctStr}%</span>
-          <span>Last seen: ${timeSince(agent.timestamp)}</span>
-          ${agent.pid ? `<span>PID: ${agent.pid}</span>` : ''}
+          <span class="card-lastseen" data-ts="${agent.timestamp}">Last seen: ${timeSince(agent.timestamp)}</span>
+          <span class="card-pid">${agent.pid ? `PID: ${agent.pid}` : ''}</span>
         </div>
       </div>
     `;

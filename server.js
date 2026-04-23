@@ -52,6 +52,25 @@ app.post('/api/heartbeat', (req, res) => {
   });
 
   insertMany(agents);
+
+  // Push to WS clients so status cards ("Last seen", status pill) update
+  // without waiting for the next 60s page refresh. Fire-and-forget — a dead
+  // send must not block the HTTP response.
+  try {
+    wsHub.send({
+      type: 'heartbeats',
+      data: {
+        ts: new Date().toISOString(),
+        source: src,
+        agents: agents.map((a) => ({
+          name: a.name,
+          status: a.status,
+          pid: a.pid || null,
+        })),
+      },
+    });
+  } catch {}
+
   res.json({ ok: true, count: agents.length, source: src });
 });
 

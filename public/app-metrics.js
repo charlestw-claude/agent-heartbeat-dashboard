@@ -548,6 +548,9 @@
             window.applyAgentsBreakdown(msg.data);
           }
         }
+        else if (msg.type === 'heartbeats' && msg.data && typeof window.applyHeartbeatsPush === 'function') {
+          window.applyHeartbeatsPush(msg.data);
+        }
       } catch {}
     };
     ws.onclose = () => {
