@@ -274,7 +274,6 @@ async function renderStatusCards() {
         <div class="card-header">
           <span class="card-name">${agent.agent_name.replace('Claude-', '')}</span>
           <div class="card-badges">
-            ${modelPill}
             <span class="card-status ${statusClass}">${statusClass}</span>
             <span class="card-signal"
                   data-signal-for="${agentKey}"
@@ -287,6 +286,7 @@ async function renderStatusCards() {
           <span class="card-lastseen" data-ts="${agent.timestamp}">Last seen: ${timeSince(agent.timestamp)}</span>
           <span class="card-pid">${agent.pid ? `PID: ${agent.pid}` : ''}</span>
         </div>
+        ${modelPill ? `<div class="card-footer">${modelPill}</div>` : ''}
       </div>
     `;
   };
