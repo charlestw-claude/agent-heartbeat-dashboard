@@ -42,11 +42,11 @@
       </div>
       <div class="vm-metrics-row">
         <div class="vm-gauge cpu">
-          <div class="vm-gauge-label">CPU</div>
+          <div class="vm-gauge-label">CPU <span class="vm-badge" id="vmCpuBadge">--</span></div>
           <div class="vm-gauge-value" id="vmCpu">-- %</div>
         </div>
         <div class="vm-gauge mem">
-          <div class="vm-gauge-label">RAM</div>
+          <div class="vm-gauge-label">RAM <span class="vm-badge" id="vmMemBadge">--</span></div>
           <div class="vm-gauge-value" id="vmMem">-- GB</div>
         </div>
         <div class="vm-gauge disk">
@@ -58,7 +58,7 @@
           <div class="vm-gauge-value" id="vmPagefile">-- GB</div>
         </div>
         <div class="vm-gauge net">
-          <div class="vm-gauge-label">Net RX / TX</div>
+          <div class="vm-gauge-label">Net RX / TX <span class="vm-badge" id="vmNetBadge">--</span></div>
           <div class="vm-gauge-value" id="vmNet">-- / --</div>
         </div>
         <div class="vm-gauge agents">
@@ -77,7 +77,7 @@
         </div>
       </div>
       <details class="vm-agents-detail">
-        <summary>Agent processes <span id="vmAgentsCount" class="vm-sub-count">(--)</span></summary>
+        <summary>Agent processes <span id="vmAgentsCount" class="vm-sub-count">(--)</span> <span id="vmTopAgentBadge" class="vm-top-agent-badge"></span></summary>
         <div class="vm-agents-table-wrap">
           <table class="vm-agents-table vm-agents-grouped">
             <thead>

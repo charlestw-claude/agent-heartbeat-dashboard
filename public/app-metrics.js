@@ -23,6 +23,10 @@
   const cachesRefreshBtn = document.getElementById('vmCachesRefresh');
   const diskGauge = diskFreeEl ? diskFreeEl.closest('.vm-gauge') : null;
   const pagefileGauge = pagefileEl ? pagefileEl.closest('.vm-gauge') : null;
+  const cpuBadgeEl = document.getElementById('vmCpuBadge');
+  const memBadgeEl = document.getElementById('vmMemBadge');
+  const netBadgeEl = document.getElementById('vmNetBadge');
+  const topAgentBadgeEl = document.getElementById('vmTopAgentBadge');
 
   function isNarrow() { return window.innerWidth <= 640; }
 
@@ -171,7 +175,25 @@
       });
     }
 
-    return { push, tick };
+    // Replace buffers with a batch of rows and repaint once.
+    // Used on first load so ECharts sees the full backfill in a single render
+    // instead of drawing a diagonal across sparsely-populated buffers.
+    function pushBatch(rows) {
+      for (let i = 0; i < series.length; i++) buffers[i].length = 0;
+      for (const row of rows) {
+        for (let i = 0; i < series.length; i++) {
+          buffers[i].push([row.ts, row.values[i]]);
+        }
+      }
+      for (let i = 0; i < series.length; i++) {
+        while (buffers[i].length > BUFFER_POINTS) buffers[i].shift();
+      }
+      chart.setOption({
+        series: buffers.map(b => ({ data: b })),
+      });
+    }
+
+    return { push, pushBatch, tick };
   }
 
   // ─── Chart 1: CPU % + RAM GB ─────────────────────────────────
@@ -214,26 +236,64 @@
   // ─── Shared tick: drift both charts' xAxis at 30fps ──────────
   setInterval(() => { cpuMemChart.tick(); netChart.tick(); }, 33);
 
+  // ─── Status badges (Busy / Active / Idle) ───────────────────
+  // Updates a badge span with a text label and level class. `level` drives
+  // the color via .vm-badge.busy / .active / .idle in CSS.
+  function setBadge(el, level, text) {
+    if (!el) return;
+    el.classList.remove('busy', 'active', 'idle');
+    if (level) el.classList.add(level);
+    el.textContent = text;
+  }
+
+  function cpuBadge(pct) {
+    if (pct == null || isNaN(pct)) return { level: null, text: '--' };
+    if (pct >= 70) return { level: 'busy', text: 'Busy' };
+    if (pct >= 30) return { level: 'active', text: 'Active' };
+    return { level: 'idle', text: 'Idle' };
+  }
+
+  function memBadge(usedGb, totalGb) {
+    if (!totalGb || totalGb <= 0) return { level: null, text: '--' };
+    const pct = (usedGb / totalGb) * 100;
+    if (pct >= 85) return { level: 'busy', text: 'Tight' };
+    if (pct >= 60) return { level: 'active', text: 'Active' };
+    return { level: 'idle', text: 'Idle' };
+  }
+
+  // Net uses a 5-sample rolling sum of RX+TX (in bytes/s) so the badge
+  // does not flicker on every 1-sec spike.
+  const netWindow = [];
+  const NET_WINDOW_LEN = 5;
+  function netBadge(rxBps, txBps) {
+    netWindow.push((rxBps || 0) + (txBps || 0));
+    while (netWindow.length > NET_WINDOW_LEN) netWindow.shift();
+    const avg = netWindow.reduce((s, v) => s + v, 0) / netWindow.length;
+    if (avg >= 1_048_576) return { level: 'busy', text: 'Busy' };      // >=1 MB/s
+    if (avg >=   102_400) return { level: 'active', text: 'Active' };  // >=100 KB/s
+    return { level: 'idle', text: 'Idle' };
+  }
+
   // ─── Sample handler (from WS or backfill) ────────────────────
-  function handleSample(sample) {
-    const t = sample.ts * 1000;
-
-    cpuMemChart.push(t, [
-      sample.cpu_pct,
-      sample.mem_used_gb,
-    ]);
-    netChart.push(t, [
-      Math.max(0.01, (sample.net_rx_bps || 0) / 1024),
-      Math.max(0.01, (sample.net_tx_bps || 0) / 1024),
-    ]);
-
+  // applyGauges updates all top-row cards and badges based on one sample.
+  // It does NOT touch the charts — the chart path is separate so backfill
+  // can repaint in one setOption call (see pushBatch).
+  function applyGauges(sample) {
     cpuEl.textContent = sample.cpu_pct === null ? '--' : sample.cpu_pct.toFixed(1) + ' %';
+    const cb = cpuBadge(sample.cpu_pct);
+    setBadge(cpuBadgeEl, cb.level, cb.text);
+
     if (sample.mem_total_gb) {
       memEl.textContent = sample.mem_used_gb.toFixed(1) + ' / ' + sample.mem_total_gb.toFixed(1) + ' GB';
     } else {
       memEl.textContent = (sample.mem_used_gb || 0).toFixed(1) + ' GB';
     }
+    const mb = memBadge(sample.mem_used_gb, sample.mem_total_gb);
+    setBadge(memBadgeEl, mb.level, mb.text);
+
     netEl.textContent = fmtBytes(sample.net_rx_bps) + ' / ' + fmtBytes(sample.net_tx_bps);
+    const nb = netBadge(sample.net_rx_bps, sample.net_tx_bps);
+    setBadge(netBadgeEl, nb.level, nb.text);
 
     if (sample.disk_free_gb != null) {
       const total = sample.disk_total_gb ? ' / ' + sample.disk_total_gb.toFixed(0) + ' GB' : ' GB';
@@ -261,9 +321,41 @@
     if (uptimeEl) uptimeEl.textContent = 'up ' + fmtUptime(sample.uptime_s);
   }
 
+  function handleSample(sample) {
+    const t = sample.ts * 1000;
+    cpuMemChart.push(t, [
+      sample.cpu_pct,
+      sample.mem_used_gb,
+    ]);
+    netChart.push(t, [
+      Math.max(0.01, (sample.net_rx_bps || 0) / 1024),
+      Math.max(0.01, (sample.net_tx_bps || 0) / 1024),
+    ]);
+    applyGauges(sample);
+  }
+
+  // Backfill uses pushBatch so ECharts renders all historical points in a
+  // single setOption call. Per-sample push would leave the chart drawing a
+  // diagonal line across sparsely-populated buffers on first paint.
   fetch('/api/metrics/recent?minutes=2')
     .then((r) => r.json())
-    .then((rows) => { for (const r of rows) handleSample(r); })
+    .then((rows) => {
+      if (!rows.length) return;
+      const cpuRamData = rows.map((r) => ({
+        ts: r.ts * 1000,
+        values: [r.cpu_pct, r.mem_used_gb],
+      }));
+      const netData = rows.map((r) => ({
+        ts: r.ts * 1000,
+        values: [
+          Math.max(0.01, (r.net_rx_bps || 0) / 1024),
+          Math.max(0.01, (r.net_tx_bps || 0) / 1024),
+        ],
+      }));
+      cpuMemChart.pushBatch(cpuRamData);
+      netChart.pushBatch(netData);
+      applyGauges(rows[rows.length - 1]);
+    })
     .catch(() => {});
 
   // ─── Per-agent process RSS table (5s polling when open) ─────
@@ -277,6 +369,19 @@
     const totalProcs = agents.reduce((s, a) => s + a.process_count, 0) + unattributed.length;
     if (agentsCountEl) {
       agentsCountEl.textContent = `(${agents.length} agent${agents.length === 1 ? '' : 's'}, ${totalProcs} proc${totalProcs === 1 ? '' : 's'})`;
+    }
+    if (topAgentBadgeEl) {
+      if (agents.length > 0) {
+        const top = agents[0];
+        const rssText = top.total_rss_mb >= 1024
+          ? (top.total_rss_mb / 1024).toFixed(2) + ' GB'
+          : top.total_rss_mb.toFixed(0) + ' MB';
+        topAgentBadgeEl.textContent = `Top: ${top.agent} · ${rssText}`;
+        topAgentBadgeEl.style.display = '';
+      } else {
+        topAgentBadgeEl.textContent = '';
+        topAgentBadgeEl.style.display = 'none';
+      }
     }
     if (!agentsTbody) return;
 
