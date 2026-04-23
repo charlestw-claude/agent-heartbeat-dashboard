@@ -381,11 +381,11 @@
           : topRam.total_rss_mb.toFixed(0) + ' MB';
         pills.push(`<span class="top-pill">Top RAM: ${topRam.agent} · ${rssText}</span>`);
 
-        // Top CPU only shown when that agent is actually doing work (>=5%),
+        // Top CPU only shown when that agent is actually doing work (>=1%),
         // so the badge row stays quiet when nothing is happening.
         let topCpu = null;
         for (const a of agents) {
-          if (a.total_cpu_pct >= 5 && (!topCpu || a.total_cpu_pct > topCpu.total_cpu_pct)) {
+          if (a.total_cpu_pct >= 1 && (!topCpu || a.total_cpu_pct > topCpu.total_cpu_pct)) {
             topCpu = a;
           }
         }

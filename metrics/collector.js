@@ -1,4 +1,7 @@
 const si = require('systeminformation');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const execFileP = promisify(execFile);
 const { getDb } = require('../db/database');
 
 // Polls VM resource metrics once per second. Buffers samples in memory and
@@ -45,9 +48,40 @@ function findAgentForProcess(p, byPid) {
   return null;
 }
 
+// Returns Set<pid> of processes holding at least one ESTABLISHED outbound
+// TCP connection to a remote :443 endpoint. Used to flag agents that are
+// actively streaming from the Anthropic API - a far more reliable signal
+// than CPU% because LLM inference happens server-side, so the VM just
+// holds an idle socket while the model "thinks". Shelling out to netstat
+// is ~50ms per call, acceptable at the 5s process-refresh cadence.
+async function getActiveTlsPids() {
+  try {
+    const { stdout } = await execFileP('netstat', ['-ano', '-p', 'TCP'], {
+      windowsHide: true,
+      timeout: 4000,
+    });
+    const active = new Set();
+    for (const line of stdout.split(/\r?\n/)) {
+      const m = line.match(/^\s*TCP\s+\S+\s+(\S+)\s+(\S+)\s+(\d+)\s*$/);
+      if (!m) continue;
+      const [, foreign, state, pidStr] = m;
+      if (state !== 'ESTABLISHED') continue;
+      const portMatch = foreign.match(/:(\d+)$/);
+      if (!portMatch || portMatch[1] !== '443') continue;
+      active.add(parseInt(pidStr, 10));
+    }
+    return active;
+  } catch {
+    return new Set();
+  }
+}
+
 async function refreshAgentProcesses() {
   try {
-    const res = await si.processes();
+    const [res, activePids] = await Promise.all([
+      si.processes(),
+      getActiveTlsPids(),
+    ]);
     const list = Array.isArray(res && res.list) ? res.list : [];
     const byPid = new Map(list.map((p) => [p.pid, p]));
 
@@ -65,6 +99,7 @@ async function refreshAgentProcesses() {
         name,
         rss_mb: memKb / 1024,
         cpu_pct: typeof p.cpu === 'number' ? p.cpu : null,
+        active: activePids.has(p.pid),
       };
       const agentName = findAgentForProcess(p, byPid);
       if (agentName) {
@@ -74,6 +109,7 @@ async function refreshAgentProcesses() {
             process_count: 0,
             total_rss_mb: 0,
             total_cpu_pct: 0,
+            active: false,
             processes: [],
           });
         }
@@ -82,6 +118,7 @@ async function refreshAgentProcesses() {
         bucket.process_count += 1;
         bucket.total_rss_mb += proc.rss_mb;
         if (proc.cpu_pct != null) bucket.total_cpu_pct += proc.cpu_pct;
+        if (proc.active) bucket.active = true;
       } else {
         unattributed.push(proc);
       }

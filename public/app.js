@@ -56,13 +56,17 @@ function healthTier(uptimePct, statusClass) {
   return { level: 'unstable', text: 'Unstable' };
 }
 
-// Activity tier derived from current CPU% summed across an agent's processes.
-// Tiers: Thinking (heavy work like LLM inference or tool exec), Working
-// (background I/O), Idle (nothing happening).
-function activityTier(cpuPct) {
+// Activity tier combines two signals:
+//   - `active`: true iff the agent has an ESTABLISHED outbound :443 TCP
+//     connection. This is the authoritative "streaming from Anthropic API"
+//     signal. CPU during inference is near zero (model runs server-side),
+//     so CPU alone would miss this.
+//   - `cpuPct`: summed across the agent's processes, catches local work
+//     such as tool execution when no API call is in flight.
+function activityTier(cpuPct, active) {
+  if (active === true) return { level: 'thinking', text: 'Thinking' };
   if (cpuPct == null || isNaN(cpuPct)) return null;
-  if (cpuPct >= 30) return { level: 'thinking', text: 'Thinking' };
-  if (cpuPct >= 5)  return { level: 'working',  text: 'Working' };
+  if (cpuPct >= 1) return { level: 'working', text: 'Working' };
   return { level: 'idle', text: 'Idle' };
 }
 
@@ -78,18 +82,18 @@ function normalizeAgentKey(name) {
 // Activity wins when the agent is actually doing something; otherwise we
 // fall back to the long-run health tier so the pill always says something
 // meaningful.
-function computeSignal(cpuPct, uptimePct, statusClass) {
-  const act = activityTier(cpuPct);
+function computeSignal(cpuPct, active, uptimePct, statusClass) {
+  const act = activityTier(cpuPct, active);
   if (act && act.level !== 'idle') {
     return { level: act.level, text: act.text };
   }
   return healthTier(uptimePct, statusClass);
 }
 
-// Cache of latest per-agent CPU% keyed by normalized name, populated by a
-// 5s poll. Rendered card DOM stays alive across the 60s status refresh, so
-// updates just toggle class/text on .card-signal without re-rendering.
-let lastActivityByAgent = {};
+// Cache of latest per-agent signals ({cpu, active}) keyed by normalized name.
+// The 60s card refresh keeps the DOM; the 5s poll just toggles class/text
+// on .card-signal without re-rendering.
+let lastAgentSignals = {};
 
 const SIGNAL_CLASSES = ['thinking', 'working', 'idle', 'stable', 'flaky', 'unstable', 'down'];
 
@@ -100,15 +104,18 @@ function applySignalsToCards(byAgent) {
     const uptimeRaw = node.getAttribute('data-uptime');
     const uptimePct = uptimeRaw === '' ? null : parseFloat(uptimeRaw);
     const statusClass = node.getAttribute('data-status-class') || 'unknown';
-    const cpu = byAgent[key];
-    const signal = computeSignal(cpu, uptimePct, statusClass);
+    const entry = byAgent[key] || {};
+    const cpu = entry.cpu;
+    const active = entry.active;
+    const signal = computeSignal(cpu, active, uptimePct, statusClass);
     SIGNAL_CLASSES.forEach((c) => node.classList.remove(c));
     if (signal) {
       node.classList.add(signal.level);
       node.textContent = signal.text;
-      node.title = cpu == null
-        ? `7d uptime: ${uptimePct == null ? '--' : uptimePct + '%'}`
-        : `CPU: ${cpu.toFixed(1)}% · 7d uptime: ${uptimePct == null ? '--' : uptimePct + '%'}`;
+      const cpuStr = cpu == null ? '--' : cpu.toFixed(1) + '%';
+      const activeStr = active === true ? 'yes' : (active === false ? 'no' : '--');
+      const upStr = uptimePct == null ? '--' : uptimePct + '%';
+      node.title = `API streaming: ${activeStr} · CPU: ${cpuStr} · 7d uptime: ${upStr}`;
     } else {
       node.textContent = '';
       node.title = '';
@@ -124,9 +131,12 @@ async function pollAgentActivity() {
     const agents = (data && Array.isArray(data.agents)) ? data.agents : [];
     const byAgent = {};
     for (const a of agents) {
-      byAgent[normalizeAgentKey(a.agent)] = a.total_cpu_pct;
+      byAgent[normalizeAgentKey(a.agent)] = {
+        cpu: a.total_cpu_pct,
+        active: a.active === true,
+      };
     }
-    lastActivityByAgent = byAgent;
+    lastAgentSignals = byAgent;
     applySignalsToCards(byAgent);
   } catch {}
 }
@@ -178,8 +188,9 @@ async function renderStatusCards() {
   }).join('');
 
   // Paint the combined signal pills from whatever cached metrics we have;
-  // the 5s poll keeps them fresh and promotes Working/Thinking when CPU rises.
-  applySignalsToCards(lastActivityByAgent);
+  // the 5s poll keeps them fresh and promotes Working/Thinking when CPU
+  // rises or an outbound :443 connection appears.
+  applySignalsToCards(lastAgentSignals);
 
   // Update header
   const onlineCount = status.filter(a => a.status === 'online').length;
