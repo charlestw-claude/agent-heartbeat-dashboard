@@ -247,12 +247,20 @@ app.get('/api/metrics/recent', (req, res) => {
   const minutes = Math.min(parseInt(req.query.minutes) || 15, 120);
   const from = Math.floor(Date.now() / 1000) - (minutes * 60);
   const rows = getDb().prepare(`
-    SELECT ts, cpu_pct, mem_used_gb, mem_total_gb, net_rx_bps, net_tx_bps, disk_read_bps, disk_write_bps
+    SELECT ts, cpu_pct, mem_used_gb, mem_total_gb,
+           net_rx_bps, net_tx_bps, disk_read_bps, disk_write_bps,
+           disk_free_gb, disk_total_gb, pagefile_used_gb, pagefile_total_gb,
+           uptime_s, agents_mem_mb
     FROM vm_metrics_raw
     WHERE ts >= ?
     ORDER BY ts
   `).all(from);
   res.json(rows);
+});
+
+// GET /api/metrics/agents — current per-process RSS for bun.exe / claude.exe
+app.get('/api/metrics/agents', (req, res) => {
+  res.json(collector.getAgentsBreakdown());
 });
 
 // GET /api/metrics/1min?hours=24
