@@ -101,11 +101,55 @@ header h1 {
 }
 
 /* Status Cards */
+.status-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.status-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.group-label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.group-count {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+
+.group-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  text-align: center;
+}
+
 .status-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 12px;
-  margin-bottom: 24px;
 }
 
 .status-card {
@@ -558,11 +602,11 @@ tr:hover td {
 .vm-top-agent-badge .top-pill {
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-dim);
+  color: #4ade80;
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
 }
 .vm-top-agent-badge .top-pill.cpu {
   color: #60a5fa;

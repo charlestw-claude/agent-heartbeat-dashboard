@@ -12,6 +12,25 @@ const AGENT_COLORS = {
   'Claude-Quant-2':  '#14b8a6',
 };
 
+// Status-card groups. Order here is render order; first matching group wins.
+// Empty groups still render a placeholder so the user can see slots that are
+// reserved for future agents (e.g. Agent Manager, Secretary).
+const AGENT_GROUPS = [
+  { key: 'manager',   label: 'Agent Manager', match: (n) => /manager/i.test(n) },
+  { key: 'assistant', label: 'Assistant',     match: (n) => /secretary/i.test(n) },
+  { key: 'agents',    label: 'Agents',        match: (n) => /^claude-agent-\d+$/i.test(n) },
+  { key: 'quant',     label: 'Quant',         match: (n) => /^claude-quant/i.test(n) },
+  { key: 'deloitte',  label: 'Deloitte',      match: (n) => /deloitte/i.test(n) },
+  { key: 'guest',     label: 'Guest',         match: (n) => /guest/i.test(n) },
+];
+
+function getAgentGroupKey(name) {
+  for (const g of AGENT_GROUPS) {
+    if (g.match(name)) return g.key;
+  }
+  return 'agents';
+}
+
 // ─── Utility ────────────────────────────────────────────────
 
 function formatTime(ts) {
@@ -225,7 +244,7 @@ async function renderStatusCards() {
     return;
   }
 
-  container.innerHTML = status.map(agent => {
+  const cardHtml = (agent) => {
     const ut = uptimeMap[agent.agent_name];
     const uptimePct = ut ? ut.uptime_pct : null;
     const uptimePctStr = uptimePct == null ? '--' : uptimePct;
@@ -250,6 +269,32 @@ async function renderStatusCards() {
           <span class="card-pid">${agent.pid ? `PID: ${agent.pid}` : ''}</span>
         </div>
       </div>
+    `;
+  };
+
+  const byGroup = {};
+  AGENT_GROUPS.forEach((g) => { byGroup[g.key] = []; });
+  for (const agent of status) {
+    const key = getAgentGroupKey(agent.agent_name);
+    (byGroup[key] || byGroup.agents).push(agent);
+  }
+  for (const key of Object.keys(byGroup)) {
+    byGroup[key].sort((a, b) => a.agent_name.localeCompare(b.agent_name));
+  }
+
+  container.innerHTML = AGENT_GROUPS.map((group) => {
+    const members = byGroup[group.key] || [];
+    const body = members.length
+      ? members.map(cardHtml).join('')
+      : '<div class="group-empty">— 尚未建立 —</div>';
+    return `
+      <section class="status-group" data-group="${group.key}">
+        <h3 class="group-label">
+          <span class="group-label-text">${group.label}</span>
+          <span class="group-count">${members.length}</span>
+        </h3>
+        <div class="status-cards">${body}</div>
+      </section>
     `;
   }).join('');
 
