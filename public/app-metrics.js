@@ -373,17 +373,28 @@
       agentsCountEl.textContent = `(${agents.length} agent${agents.length === 1 ? '' : 's'}, ${totalProcs} proc${totalProcs === 1 ? '' : 's'})`;
     }
     if (topAgentBadgeEl) {
+      const pills = [];
       if (agents.length > 0) {
-        const top = agents[0];
-        const rssText = top.total_rss_mb >= 1024
-          ? (top.total_rss_mb / 1024).toFixed(2) + ' GB'
-          : top.total_rss_mb.toFixed(0) + ' MB';
-        topAgentBadgeEl.textContent = `Top: ${top.agent} · ${rssText}`;
-        topAgentBadgeEl.style.display = '';
-      } else {
-        topAgentBadgeEl.textContent = '';
-        topAgentBadgeEl.style.display = 'none';
+        const topRam = agents[0]; // sorted by total_rss_mb desc by server
+        const rssText = topRam.total_rss_mb >= 1024
+          ? (topRam.total_rss_mb / 1024).toFixed(2) + ' GB'
+          : topRam.total_rss_mb.toFixed(0) + ' MB';
+        pills.push(`<span class="top-pill">Top RAM: ${topRam.agent} · ${rssText}</span>`);
+
+        // Top CPU only shown when that agent is actually doing work (>=5%),
+        // so the badge row stays quiet when nothing is happening.
+        let topCpu = null;
+        for (const a of agents) {
+          if (a.total_cpu_pct >= 5 && (!topCpu || a.total_cpu_pct > topCpu.total_cpu_pct)) {
+            topCpu = a;
+          }
+        }
+        if (topCpu) {
+          pills.push(`<span class="top-pill cpu">Top CPU: ${topCpu.agent} · ${topCpu.total_cpu_pct.toFixed(1)}%</span>`);
+        }
       }
+      topAgentBadgeEl.innerHTML = pills.join('');
+      topAgentBadgeEl.style.display = pills.length ? '' : 'none';
     }
     if (!agentsTbody) return;
 

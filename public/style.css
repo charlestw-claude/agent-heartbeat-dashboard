@@ -190,6 +190,39 @@ header h1 {
   border-color: rgba(100, 116, 139, 0.35);
 }
 
+.card-activity {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  line-height: 1.3;
+  border: 1px solid transparent;
+  display: inline-block;
+}
+.card-activity:empty { display: none; }
+.card-activity.idle {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  border-color: rgba(148, 163, 184, 0.25);
+}
+.card-activity.working {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border-color: rgba(59, 130, 246, 0.35);
+}
+.card-activity.thinking {
+  background: rgba(249, 115, 22, 0.18);
+  color: #fb923c;
+  border-color: rgba(249, 115, 22, 0.45);
+  animation: card-activity-pulse 1.6s ease-in-out infinite;
+}
+@keyframes card-activity-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.35); }
+  50%      { box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.06); }
+}
+
 .card-status.online {
   color: var(--green);
   background: var(--green-dim);
@@ -526,8 +559,12 @@ tr:hover td {
 }
 
 .vm-top-agent-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-left: 8px;
+}
+.vm-top-agent-badge .top-pill {
   font-size: 11px;
   font-weight: 500;
   color: var(--text-dim);
@@ -535,6 +572,11 @@ tr:hover td {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.vm-top-agent-badge .top-pill.cpu {
+  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
 }
 
 .vm-gauge-value {

@@ -56,6 +56,62 @@ function healthTier(uptimePct, statusClass) {
   return { level: 'unstable', text: 'Unstable' };
 }
 
+// Activity tier derived from current CPU% summed across an agent's processes.
+// Tiers: Thinking (heavy work like LLM inference or tool exec), Working
+// (background I/O), Idle (nothing happening).
+function activityTier(cpuPct) {
+  if (cpuPct == null || isNaN(cpuPct)) return null;
+  if (cpuPct >= 30) return { level: 'thinking', text: 'Thinking' };
+  if (cpuPct >= 5)  return { level: 'working',  text: 'Working' };
+  return { level: 'idle', text: 'Idle' };
+}
+
+// Normalize "Claude-Agent-05" and "Agent-05" to the same key so the Status
+// Card (Claude- prefixed) and metrics (sometimes without prefix, e.g.
+// Guest-Agent) can be joined.
+function normalizeAgentKey(name) {
+  if (!name) return '';
+  return name.replace(/^Claude-/i, '').toLowerCase();
+}
+
+// Cache of latest per-agent CPU% keyed by normalized name, populated by a
+// 5s poll. Rendered card DOM stays alive across the 60s status refresh, so
+// updates just toggle class/text on .card-activity without re-rendering.
+let lastActivityByAgent = {};
+
+function applyActivityToCards(byAgent) {
+  const nodes = document.querySelectorAll('.card-activity[data-activity-for]');
+  nodes.forEach((node) => {
+    const key = node.getAttribute('data-activity-for');
+    const cpu = byAgent[key];
+    const tier = activityTier(cpu);
+    node.classList.remove('thinking', 'working', 'idle');
+    if (tier) {
+      node.classList.add(tier.level);
+      node.textContent = tier.text;
+      node.title = `Current CPU: ${cpu.toFixed(1)}%`;
+    } else {
+      node.textContent = '';
+      node.title = '';
+    }
+  });
+}
+
+async function pollAgentActivity() {
+  try {
+    const r = await fetch('/api/metrics/agents');
+    if (!r.ok) return;
+    const data = await r.json();
+    const agents = (data && Array.isArray(data.agents)) ? data.agents : [];
+    const byAgent = {};
+    for (const a of agents) {
+      byAgent[normalizeAgentKey(a.agent)] = a.total_cpu_pct;
+    }
+    lastActivityByAgent = byAgent;
+    applyActivityToCards(byAgent);
+  } catch {}
+}
+
 // ─── Status Cards ───────────────────────────────────────────
 
 async function renderStatusCards() {
@@ -80,14 +136,16 @@ async function renderStatusCards() {
     const uptimePctStr = uptimePct == null ? '--' : uptimePct;
     const statusClass = agent.status || 'unknown';
     const health = healthTier(uptimePct, statusClass);
+    const agentKey = normalizeAgentKey(agent.agent_name);
 
     return `
-      <div class="status-card ${statusClass}">
+      <div class="status-card ${statusClass}" data-agent-key="${agentKey}">
         <div class="card-header">
           <span class="card-name">${agent.agent_name.replace('Claude-', '')}</span>
           <div class="card-badges">
             <span class="card-status ${statusClass}">${statusClass}</span>
             ${health ? `<span class="card-health ${health.level}">${health.text}</span>` : ''}
+            <span class="card-activity" data-activity-for="${agentKey}"></span>
           </div>
         </div>
         <div class="card-meta">
@@ -98,6 +156,10 @@ async function renderStatusCards() {
       </div>
     `;
   }).join('');
+
+  // Paint activity pills immediately from whatever cached metrics we have;
+  // the 5s poll below keeps them fresh.
+  applyActivityToCards(lastActivityByAgent);
 
   // Update header
   const onlineCount = status.filter(a => a.status === 'online').length;
@@ -449,3 +511,8 @@ document.getElementById('refreshBtn')?.addEventListener('click', () => refresh({
 
 refresh();
 setInterval(() => refresh(), REFRESH_INTERVAL);
+
+// Agent activity polled faster than the 60s card refresh so Thinking /
+// Working / Idle reflects the current LLM/tool work.
+pollAgentActivity();
+setInterval(pollAgentActivity, 5000);
