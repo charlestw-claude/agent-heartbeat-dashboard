@@ -43,6 +43,19 @@ async function fetchJson(url) {
   return res.json();
 }
 
+// Health tier derived from 7-day uptime %. `statusClass` short-circuits when
+// the agent is not currently online so we don't claim "stable" for a box
+// that is actually down right now.
+function healthTier(uptimePct, statusClass) {
+  if (statusClass === 'offline') return { level: 'down', text: 'Down' };
+  if (uptimePct == null) return null;
+  const n = typeof uptimePct === 'string' ? parseFloat(uptimePct) : uptimePct;
+  if (isNaN(n)) return null;
+  if (n >= 99.5) return { level: 'stable',   text: 'Stable' };
+  if (n >= 95)   return { level: 'flaky',    text: 'Flaky' };
+  return { level: 'unstable', text: 'Unstable' };
+}
+
 // ─── Status Cards ───────────────────────────────────────────
 
 async function renderStatusCards() {
@@ -63,17 +76,22 @@ async function renderStatusCards() {
 
   container.innerHTML = status.map(agent => {
     const ut = uptimeMap[agent.agent_name];
-    const uptimePct = ut ? ut.uptime_pct : '--';
+    const uptimePct = ut ? ut.uptime_pct : null;
+    const uptimePctStr = uptimePct == null ? '--' : uptimePct;
     const statusClass = agent.status || 'unknown';
+    const health = healthTier(uptimePct, statusClass);
 
     return `
       <div class="status-card ${statusClass}">
         <div class="card-header">
           <span class="card-name">${agent.agent_name.replace('Claude-', '')}</span>
-          <span class="card-status ${statusClass}">${statusClass}</span>
+          <div class="card-badges">
+            <span class="card-status ${statusClass}">${statusClass}</span>
+            ${health ? `<span class="card-health ${health.level}">${health.text}</span>` : ''}
+          </div>
         </div>
         <div class="card-meta">
-          <span>Uptime (7d): ${uptimePct}%</span>
+          <span>Uptime (7d): ${uptimePctStr}%</span>
           <span>Last seen: ${timeSince(agent.timestamp)}</span>
           ${agent.pid ? `<span>PID: ${agent.pid}</span>` : ''}
         </div>

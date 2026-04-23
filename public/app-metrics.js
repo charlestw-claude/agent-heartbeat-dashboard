@@ -284,7 +284,8 @@
     setBadge(cpuBadgeEl, cb.level, cb.text);
 
     if (sample.mem_total_gb) {
-      memEl.textContent = sample.mem_used_gb.toFixed(1) + ' / ' + sample.mem_total_gb.toFixed(1) + ' GB';
+      const pct = (sample.mem_used_gb / sample.mem_total_gb) * 100;
+      memEl.textContent = sample.mem_used_gb.toFixed(1) + ' / ' + sample.mem_total_gb.toFixed(1) + ' GB (' + pct.toFixed(0) + '%)';
     } else {
       memEl.textContent = (sample.mem_used_gb || 0).toFixed(1) + ' GB';
     }
@@ -296,11 +297,12 @@
     setBadge(netBadgeEl, nb.level, nb.text);
 
     if (sample.disk_free_gb != null) {
-      const total = sample.disk_total_gb ? ' / ' + sample.disk_total_gb.toFixed(0) + ' GB' : ' GB';
-      diskFreeEl.textContent = sample.disk_free_gb.toFixed(1) + total;
       if (sample.disk_total_gb) {
         const freePct = (sample.disk_free_gb / sample.disk_total_gb) * 100;
+        diskFreeEl.textContent = sample.disk_free_gb.toFixed(1) + ' / ' + sample.disk_total_gb.toFixed(0) + ' GB (' + freePct.toFixed(0) + '%)';
         applyAlert(diskGauge, freePct, 20, 10, true);
+      } else {
+        diskFreeEl.textContent = sample.disk_free_gb.toFixed(1) + ' GB';
       }
     } else {
       diskFreeEl.textContent = '-- GB';
