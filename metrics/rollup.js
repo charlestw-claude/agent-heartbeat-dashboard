@@ -16,15 +16,21 @@ const MINUTE_RETENTION_DAYS = 30;
 function aggregateWindow(db, fromTs, toTs) {
   return db.prepare(`
     SELECT
-      AVG(cpu_pct)         AS cpu_pct_avg,
-      MAX(cpu_pct)         AS cpu_pct_max,
-      AVG(mem_used_gb)     AS mem_used_gb_avg,
-      MAX(mem_used_gb)     AS mem_used_gb_max,
-      AVG(net_rx_bps)      AS net_rx_bps_avg,
-      AVG(net_tx_bps)      AS net_tx_bps_avg,
-      AVG(disk_read_bps)   AS disk_read_bps_avg,
-      AVG(disk_write_bps)  AS disk_write_bps_avg,
-      COUNT(*)             AS sample_count
+      AVG(cpu_pct)          AS cpu_pct_avg,
+      MAX(cpu_pct)          AS cpu_pct_max,
+      AVG(mem_used_gb)      AS mem_used_gb_avg,
+      MAX(mem_used_gb)      AS mem_used_gb_max,
+      AVG(net_rx_bps)       AS net_rx_bps_avg,
+      AVG(net_tx_bps)       AS net_tx_bps_avg,
+      AVG(disk_read_bps)    AS disk_read_bps_avg,
+      AVG(disk_write_bps)   AS disk_write_bps_avg,
+      AVG(disk_free_gb)     AS disk_free_gb_avg,
+      AVG(pagefile_used_gb) AS pagefile_used_gb_avg,
+      MAX(pagefile_used_gb) AS pagefile_used_gb_max,
+      MAX(uptime_s)         AS uptime_s_max,
+      AVG(agents_mem_mb)    AS agents_mem_mb_avg,
+      MAX(agents_mem_mb)    AS agents_mem_mb_max,
+      COUNT(*)              AS sample_count
     FROM vm_metrics_raw
     WHERE ts >= ? AND ts < ?
   `).get(fromTs, toTs);
@@ -39,11 +45,15 @@ function rollupMinute(db) {
   db.prepare(`
     INSERT OR REPLACE INTO vm_metrics_1min
       (ts, cpu_pct_avg, cpu_pct_max, mem_used_gb_avg, mem_used_gb_max,
-       net_rx_bps_avg, net_tx_bps_avg, disk_read_bps_avg, disk_write_bps_avg, sample_count)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       net_rx_bps_avg, net_tx_bps_avg, disk_read_bps_avg, disk_write_bps_avg,
+       disk_free_gb_avg, pagefile_used_gb_avg, pagefile_used_gb_max,
+       uptime_s_max, agents_mem_mb_avg, agents_mem_mb_max, sample_count)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     targetMin, r.cpu_pct_avg, r.cpu_pct_max, r.mem_used_gb_avg, r.mem_used_gb_max,
-    r.net_rx_bps_avg, r.net_tx_bps_avg, r.disk_read_bps_avg, r.disk_write_bps_avg, r.sample_count
+    r.net_rx_bps_avg, r.net_tx_bps_avg, r.disk_read_bps_avg, r.disk_write_bps_avg,
+    r.disk_free_gb_avg, r.pagefile_used_gb_avg, r.pagefile_used_gb_max,
+    r.uptime_s_max, r.agents_mem_mb_avg, r.agents_mem_mb_max, r.sample_count,
   );
 }
 
@@ -53,15 +63,21 @@ function rollupHour(db) {
   const targetHour = currentHourStart - 3600;
   const r = db.prepare(`
     SELECT
-      AVG(cpu_pct_avg)        AS cpu_pct_avg,
-      MAX(cpu_pct_max)        AS cpu_pct_max,
-      AVG(mem_used_gb_avg)    AS mem_used_gb_avg,
-      MAX(mem_used_gb_max)    AS mem_used_gb_max,
-      AVG(net_rx_bps_avg)     AS net_rx_bps_avg,
-      AVG(net_tx_bps_avg)     AS net_tx_bps_avg,
-      AVG(disk_read_bps_avg)  AS disk_read_bps_avg,
-      AVG(disk_write_bps_avg) AS disk_write_bps_avg,
-      SUM(sample_count)       AS sample_count
+      AVG(cpu_pct_avg)         AS cpu_pct_avg,
+      MAX(cpu_pct_max)         AS cpu_pct_max,
+      AVG(mem_used_gb_avg)     AS mem_used_gb_avg,
+      MAX(mem_used_gb_max)     AS mem_used_gb_max,
+      AVG(net_rx_bps_avg)      AS net_rx_bps_avg,
+      AVG(net_tx_bps_avg)      AS net_tx_bps_avg,
+      AVG(disk_read_bps_avg)   AS disk_read_bps_avg,
+      AVG(disk_write_bps_avg)  AS disk_write_bps_avg,
+      AVG(disk_free_gb_avg)    AS disk_free_gb_avg,
+      AVG(pagefile_used_gb_avg) AS pagefile_used_gb_avg,
+      MAX(pagefile_used_gb_max) AS pagefile_used_gb_max,
+      MAX(uptime_s_max)        AS uptime_s_max,
+      AVG(agents_mem_mb_avg)   AS agents_mem_mb_avg,
+      MAX(agents_mem_mb_max)   AS agents_mem_mb_max,
+      SUM(sample_count)        AS sample_count
     FROM vm_metrics_1min
     WHERE ts >= ? AND ts < ?
   `).get(targetHour, targetHour + 3600);
@@ -69,11 +85,15 @@ function rollupHour(db) {
   db.prepare(`
     INSERT OR REPLACE INTO vm_metrics_hourly
       (ts, cpu_pct_avg, cpu_pct_max, mem_used_gb_avg, mem_used_gb_max,
-       net_rx_bps_avg, net_tx_bps_avg, disk_read_bps_avg, disk_write_bps_avg, sample_count)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       net_rx_bps_avg, net_tx_bps_avg, disk_read_bps_avg, disk_write_bps_avg,
+       disk_free_gb_avg, pagefile_used_gb_avg, pagefile_used_gb_max,
+       uptime_s_max, agents_mem_mb_avg, agents_mem_mb_max, sample_count)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     targetHour, r.cpu_pct_avg, r.cpu_pct_max, r.mem_used_gb_avg, r.mem_used_gb_max,
-    r.net_rx_bps_avg, r.net_tx_bps_avg, r.disk_read_bps_avg, r.disk_write_bps_avg, r.sample_count
+    r.net_rx_bps_avg, r.net_tx_bps_avg, r.disk_read_bps_avg, r.disk_write_bps_avg,
+    r.disk_free_gb_avg, r.pagefile_used_gb_avg, r.pagefile_used_gb_max,
+    r.uptime_s_max, r.agents_mem_mb_avg, r.agents_mem_mb_max, r.sample_count,
   );
 }
 

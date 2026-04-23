@@ -38,7 +38,9 @@ async function archiveDay(date) {
   const db = getDb();
   const rows = db.prepare(`
     SELECT ts, cpu_pct, mem_used_gb, mem_total_gb,
-           net_rx_bps, net_tx_bps, disk_read_bps, disk_write_bps
+           net_rx_bps, net_tx_bps, disk_read_bps, disk_write_bps,
+           disk_free_gb, disk_total_gb, pagefile_used_gb, pagefile_total_gb,
+           uptime_s, agents_mem_mb
     FROM vm_metrics_raw
     WHERE ts >= ? AND ts < ?
     ORDER BY ts
@@ -49,12 +51,17 @@ async function archiveDay(date) {
     return { tag, empty: true };
   }
 
-  const header = 'ts,cpu_pct,mem_used_gb,mem_total_gb,net_rx_bps,net_tx_bps,disk_read_bps,disk_write_bps\n';
+  const header = 'ts,cpu_pct,mem_used_gb,mem_total_gb,net_rx_bps,net_tx_bps,disk_read_bps,disk_write_bps,disk_free_gb,disk_total_gb,pagefile_used_gb,pagefile_total_gb,uptime_s,agents_mem_mb\n';
   const fmt = (v) => (v === null || v === undefined ? '' : typeof v === 'number' ? v.toFixed(3) : String(v));
   const stream = fs.createWriteStream(csvPath);
   stream.write(header);
   for (const r of rows) {
-    stream.write(`${r.ts},${fmt(r.cpu_pct)},${fmt(r.mem_used_gb)},${fmt(r.mem_total_gb)},${fmt(r.net_rx_bps)},${fmt(r.net_tx_bps)},${fmt(r.disk_read_bps)},${fmt(r.disk_write_bps)}\n`);
+    stream.write(
+      `${r.ts},${fmt(r.cpu_pct)},${fmt(r.mem_used_gb)},${fmt(r.mem_total_gb)},` +
+      `${fmt(r.net_rx_bps)},${fmt(r.net_tx_bps)},${fmt(r.disk_read_bps)},${fmt(r.disk_write_bps)},` +
+      `${fmt(r.disk_free_gb)},${fmt(r.disk_total_gb)},${fmt(r.pagefile_used_gb)},${fmt(r.pagefile_total_gb)},` +
+      `${fmt(r.uptime_s)},${fmt(r.agents_mem_mb)}\n`
+    );
   }
   await new Promise((resolve, reject) => { stream.end((err) => err ? reject(err) : resolve()); });
 

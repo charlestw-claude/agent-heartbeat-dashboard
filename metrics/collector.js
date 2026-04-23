@@ -5,33 +5,90 @@ const { getDb } = require('../db/database');
 // flushes to SQLite every BATCH_FLUSH_MS to keep write amplification low.
 // systeminformation gives cumulative counters for net/disk; we convert to
 // per-second rates locally by diffing against the previous sample.
+//
+// Process-level RSS (bun.exe / claude.exe) is sampled on a slower cadence
+// because si.processes() on Windows is slow (~0.5–1s). The 1Hz sample reads
+// the cached total; a separate endpoint (`/api/metrics/agents`) returns the
+// per-agent breakdown for on-demand UI display.
 
 const POLL_INTERVAL_MS = 1000;
 const BATCH_FLUSH_MS = 5000;
+const PROC_REFRESH_MS = 5000;
+const AGENT_PROC_NAMES = new Set(['bun.exe', 'claude.exe']);
 
-let lastNet = null;   // { rx_bytes, tx_bytes, ts }
-let lastDisk = null;  // { rIO_bytes, wIO_bytes, ts }
+let lastNet = null;
 let buffer = [];
-let listeners = [];  // functions to notify on each sample (WS push)
+let listeners = [];
 let pollTimer = null;
 let flushTimer = null;
+let procTimer = null;
 let lastSample = null;
+let lastAgentsMemMB = null;
+let lastAgentsBreakdown = { ts: 0, processes: [] };
+
+async function refreshAgentProcesses() {
+  try {
+    const res = await si.processes();
+    const list = Array.isArray(res && res.list) ? res.list : [];
+    const matched = [];
+    let totalKb = 0;
+    for (const p of list) {
+      const name = (p.name || '').toLowerCase();
+      if (!AGENT_PROC_NAMES.has(name)) continue;
+      const memKb = p.memRss || p.mem_rss || 0;
+      totalKb += memKb;
+      matched.push({
+        pid: p.pid,
+        name,
+        rss_mb: memKb / 1024,
+        cpu_pct: typeof p.cpu === 'number' ? p.cpu : null,
+      });
+    }
+    lastAgentsMemMB = totalKb / 1024;
+    lastAgentsBreakdown = {
+      ts: Math.floor(Date.now() / 1000),
+      processes: matched.sort((a, b) => b.rss_mb - a.rss_mb),
+    };
+  } catch (err) {
+    console.error('[metrics] process probe error:', err.message);
+  }
+}
 
 async function pollOnce() {
   const nowMs = Date.now();
   const ts = Math.floor(nowMs / 1000);
 
   try {
-    const [cpu, mem, net, disk] = await Promise.all([
+    const [cpu, mem, net, fs, time] = await Promise.all([
       si.currentLoad(),
       si.mem(),
       si.networkStats(),
-      si.disksIO(),
+      si.fsSize(),
+      si.time(),
     ]);
 
     const cpu_pct = cpu && typeof cpu.currentLoad === 'number' ? cpu.currentLoad : null;
     const mem_total_gb = mem ? mem.total / 1073741824 : null;
     const mem_used_gb = mem ? (mem.total - mem.available) / 1073741824 : null;
+
+    // Pagefile / commit charge (Windows swap).
+    const pagefile_total_gb = mem && typeof mem.swaptotal === 'number' ? mem.swaptotal / 1073741824 : null;
+    const pagefile_used_gb = mem && typeof mem.swapused === 'number' ? mem.swapused / 1073741824 : null;
+
+    // System disk free. Prefer the drive mounted at C:; fall back to the
+    // first entry if no C: match (e.g. a future non-Windows host).
+    let disk_free_gb = null;
+    let disk_total_gb = null;
+    if (Array.isArray(fs) && fs.length) {
+      const c = fs.find((d) => /^c:/i.test(d.mount || d.fs || '')) || fs[0];
+      if (c) {
+        if (typeof c.available === 'number') disk_free_gb = c.available / 1073741824;
+        else if (typeof c.size === 'number' && typeof c.used === 'number') disk_free_gb = (c.size - c.used) / 1073741824;
+        if (typeof c.size === 'number') disk_total_gb = c.size / 1073741824;
+      }
+    }
+
+    const uptime_s = time && typeof time.uptime === 'number' ? Math.floor(time.uptime) : null;
 
     // Sum across network interfaces; systeminformation returns an array
     const rx_bytes = Array.isArray(net) ? net.reduce((s, n) => s + (n.rx_bytes || 0), 0) : 0;
@@ -46,22 +103,6 @@ async function pollOnce() {
     }
     lastNet = { rx_bytes, tx_bytes, ts: nowMs };
 
-    let disk_read_bps = null;
-    let disk_write_bps = null;
-    if (disk && lastDisk && nowMs > lastDisk.ts) {
-      const dt_s = (nowMs - lastDisk.ts) / 1000;
-      if (typeof disk.rIO_sec === 'number' && disk.rIO_sec > 0) {
-        // rIO_sec is already per-second on Windows
-        disk_read_bps = (disk.rIO_sec || 0) * 512;
-        disk_write_bps = (disk.wIO_sec || 0) * 512;
-      } else {
-        // Fallback: diff cumulative
-        disk_read_bps = Math.max(0, ((disk.rIO || 0) - lastDisk.rIO_bytes) * 512 / dt_s);
-        disk_write_bps = Math.max(0, ((disk.wIO || 0) - lastDisk.wIO_bytes) * 512 / dt_s);
-      }
-    }
-    if (disk) lastDisk = { rIO_bytes: disk.rIO || 0, wIO_bytes: disk.wIO || 0, ts: nowMs };
-
     const sample = {
       ts,
       cpu_pct,
@@ -69,8 +110,17 @@ async function pollOnce() {
       mem_total_gb,
       net_rx_bps,
       net_tx_bps,
-      disk_read_bps,
-      disk_write_bps,
+      // disk_read_bps / disk_write_bps intentionally null: systeminformation's
+      // disksIO() returns null on Windows. Columns kept for backward-compat
+      // with v1.1/v1.2 data; new dashboards use disk_free_gb instead.
+      disk_read_bps: null,
+      disk_write_bps: null,
+      disk_free_gb,
+      disk_total_gb,
+      pagefile_used_gb,
+      pagefile_total_gb,
+      uptime_s,
+      agents_mem_mb: lastAgentsMemMB,
     };
 
     // Skip the first sample where per-second rates are still null
@@ -94,13 +144,20 @@ function flush() {
     const db = getDb();
     const stmt = db.prepare(`
       INSERT OR REPLACE INTO vm_metrics_raw
-        (ts, cpu_pct, mem_used_gb, mem_total_gb, net_rx_bps, net_tx_bps, disk_read_bps, disk_write_bps)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (ts, cpu_pct, mem_used_gb, mem_total_gb,
+         net_rx_bps, net_tx_bps, disk_read_bps, disk_write_bps,
+         disk_free_gb, disk_total_gb, pagefile_used_gb, pagefile_total_gb,
+         uptime_s, agents_mem_mb)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const tx = db.transaction((items) => {
       for (const r of items) {
-        stmt.run(r.ts, r.cpu_pct, r.mem_used_gb, r.mem_total_gb,
-                 r.net_rx_bps, r.net_tx_bps, r.disk_read_bps, r.disk_write_bps);
+        stmt.run(
+          r.ts, r.cpu_pct, r.mem_used_gb, r.mem_total_gb,
+          r.net_rx_bps, r.net_tx_bps, r.disk_read_bps, r.disk_write_bps,
+          r.disk_free_gb, r.disk_total_gb, r.pagefile_used_gb, r.pagefile_total_gb,
+          r.uptime_s, r.agents_mem_mb,
+        );
       }
     });
     tx(rows);
@@ -111,14 +168,18 @@ function flush() {
 
 function start() {
   if (pollTimer) return;
+  // Prime the process cache so the first 1Hz sample has something to report.
+  refreshAgentProcesses();
   pollTimer = setInterval(pollOnce, POLL_INTERVAL_MS);
   flushTimer = setInterval(flush, BATCH_FLUSH_MS);
-  console.log(`[metrics] collector started (poll=${POLL_INTERVAL_MS}ms, flush=${BATCH_FLUSH_MS}ms)`);
+  procTimer = setInterval(refreshAgentProcesses, PROC_REFRESH_MS);
+  console.log(`[metrics] collector started (poll=${POLL_INTERVAL_MS}ms, flush=${BATCH_FLUSH_MS}ms, proc=${PROC_REFRESH_MS}ms)`);
 }
 
 function stop() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   if (flushTimer) { clearInterval(flushTimer); flushTimer = null; }
+  if (procTimer) { clearInterval(procTimer); procTimer = null; }
   flush();
 }
 
@@ -128,5 +189,6 @@ function onSample(fn) {
 }
 
 function getLastSample() { return lastSample; }
+function getAgentsBreakdown() { return lastAgentsBreakdown; }
 
-module.exports = { start, stop, onSample, getLastSample };
+module.exports = { start, stop, onSample, getLastSample, getAgentsBreakdown };
