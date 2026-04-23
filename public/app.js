@@ -44,9 +44,16 @@ function formatTimeShort(ts) {
 }
 
 function timeSince(ts) {
-  const now = Date.now();
-  const then = new Date(ts + 'Z').getTime();
-  const diff = Math.floor((now - then) / 1000);
+  if (!ts) return '--';
+  // Accept both SQLite-native ("YYYY-MM-DD HH:MM:SS", no timezone — stored
+  // as UTC by convention) and ISO strings with timezone (from WS pushes).
+  // The former needs an explicit 'Z' appended; the latter must not be
+  // double-terminated.
+  const needsZ = typeof ts === 'string' && !/[zZ]|[+-]\d\d:?\d\d$/.test(ts);
+  const then = new Date(needsZ ? ts + 'Z' : ts).getTime();
+  if (!Number.isFinite(then)) return '--';
+  const diff = Math.floor((Date.now() - then) / 1000);
+  if (diff < 0) return 'just now';
   if (diff < 60) return `${diff}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -283,10 +290,12 @@ async function renderStatusCards() {
         </div>
         <div class="card-meta">
           <span>Uptime (7d): ${uptimePctStr}%</span>
-          <span class="card-lastseen" data-ts="${agent.timestamp}">Last seen: ${timeSince(agent.timestamp)}</span>
+          <div class="card-meta-row">
+            <span class="card-lastseen" data-ts="${agent.timestamp}">Last seen: ${timeSince(agent.timestamp)}</span>
+            ${modelPill}
+          </div>
           <span class="card-pid">${agent.pid ? `PID: ${agent.pid}` : ''}</span>
         </div>
-        ${modelPill ? `<div class="card-footer">${modelPill}</div>` : ''}
       </div>
     `;
   };
