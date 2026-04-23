@@ -64,7 +64,14 @@ function healthTier(uptimePct, statusClass) {
 //   - `cpuPct`: summed across the agent's processes, catches local work
 //     such as tool execution when no API call is in flight.
 function activityTier(cpuPct, active) {
-  if (active === true) return { level: 'thinking', text: 'Thinking' };
+  // Thinking = active TLS socket AND visible CPU. The ESTABLISHED :443 socket
+  // alone is not enough because HTTP/2 keep-alive keeps it open for minutes
+  // after a conversation ends, which would produce sticky false positives.
+  // Requiring a small amount of CPU ensures tokens are actually being
+  // received and parsed.
+  if (active === true && cpuPct != null && cpuPct >= 0.3) {
+    return { level: 'thinking', text: 'Thinking' };
+  }
   if (cpuPct == null || isNaN(cpuPct)) return null;
   if (cpuPct >= 1) return { level: 'working', text: 'Working' };
   return { level: 'idle', text: 'Idle' };

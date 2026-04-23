@@ -118,7 +118,10 @@ async function refreshAgentProcesses() {
         bucket.process_count += 1;
         bucket.total_rss_mb += proc.rss_mb;
         if (proc.cpu_pct != null) bucket.total_cpu_pct += proc.cpu_pct;
-        if (proc.active) bucket.active = true;
+        // Only claude.exe owns the Anthropic API stream. bun.exe processes are
+        // MCP servers (Telegram, etc) that keep long-poll :443 connections open
+        // regardless of LLM activity, so they'd produce constant false positives.
+        if (proc.active && name === 'claude.exe') bucket.active = true;
       } else {
         unattributed.push(proc);
       }
