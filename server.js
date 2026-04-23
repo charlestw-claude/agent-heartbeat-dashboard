@@ -9,6 +9,7 @@ const collector = require('./metrics/collector');
 const rollup = require('./metrics/rollup');
 const archive = require('./metrics/archive');
 const diskCaches = require('./metrics/disk-caches');
+const claudeUsage = require('./metrics/claude-usage');
 const wsHub = require('./metrics/ws');
 
 const app = express();
@@ -287,6 +288,27 @@ app.get('/api/metrics/agents', (req, res) => {
 app.get('/api/disk/caches', (req, res) => {
   const force = req.query.refresh === '1';
   res.json(diskCaches.getInfo({ force }));
+});
+
+// GET /api/claude/usage — latest snapshot POSTed by ClaudeMonitor.
+app.get('/api/claude/usage', (req, res) => {
+  res.json(claudeUsage.getSnapshot());
+});
+
+// POST /api/claude/usage/ingest — ClaudeMonitor pushes a parsed snapshot here
+// after scraping claude.ai's usage page. Loopback-only: this bypasses any
+// auth and the dashboard's LAN firewall is our only other line of defence.
+app.post('/api/claude/usage/ingest', (req, res) => {
+  const ip = req.ip || (req.connection && req.connection.remoteAddress) || '';
+  const loopback = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  if (!loopback) return res.status(403).json({ error: 'loopback_only' });
+
+  try {
+    claudeUsage.ingest(req.body);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  res.json({ ok: true });
 });
 
 // GET /api/metrics/1min?hours=24

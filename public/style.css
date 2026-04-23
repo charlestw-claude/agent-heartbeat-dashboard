@@ -100,6 +100,147 @@ header h1 {
   to { transform: rotate(360deg); }
 }
 
+/* Claude Subscription Usage Panel */
+.claude-usage-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+
+.claude-usage-panel .usage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.claude-usage-panel .usage-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+.claude-usage-panel .usage-header-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.claude-usage-panel .usage-plan {
+  font-size: 11px;
+  font-weight: 600;
+  color: #c084fc;
+  background: rgba(168, 85, 247, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  padding: 2px 9px;
+  border-radius: 999px;
+  text-transform: capitalize;
+}
+.claude-usage-panel .usage-plan:empty {
+  display: none;
+}
+
+.claude-usage-panel .usage-meta {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.claude-usage-panel .usage-bars {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.claude-usage-panel .usage-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.claude-usage-panel .usage-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+}
+
+.claude-usage-panel .usage-label {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.claude-usage-panel .usage-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.claude-usage-panel .usage-bar {
+  position: relative;
+  height: 8px;
+  background: var(--surface2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.claude-usage-panel .usage-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--green);
+  transition: width 0.4s ease;
+}
+
+.claude-usage-panel .usage-bar-fill.level-low    { background: var(--green); }
+.claude-usage-panel .usage-bar-fill.level-mid    { background: #3b82f6; }
+.claude-usage-panel .usage-bar-fill.level-high   { background: var(--yellow); }
+.claude-usage-panel .usage-bar-fill.level-danger { background: var(--red); }
+
+.claude-usage-panel .usage-reset {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.claude-usage-panel .usage-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 10px 2px;
+}
+
+.claude-usage-panel.errored {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.claude-usage-panel.stale {
+  border-color: rgba(245, 158, 11, 0.35);
+}
+.claude-usage-panel.stale .usage-meta {
+  color: #fbbf24;
+}
+
+.claude-usage-panel .usage-raw {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  margin-left: 4px;
+}
+
+.claude-usage-panel .usage-error {
+  font-size: 12px;
+  color: #fca5a5;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 6px;
+}
+
 /* Status Cards */
 .status-groups {
   display: flex;

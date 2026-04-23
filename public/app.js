@@ -226,6 +226,134 @@ async function pollAgentActivity() {
   } catch {}
 }
 
+// ─── Claude Subscription Usage ──────────────────────────────
+
+// Human-readable countdown to an ISO timestamp, compact form (1d 3h / 42m).
+function timeUntil(iso) {
+  const target = new Date(iso).getTime();
+  const diff = target - Date.now();
+  if (!Number.isFinite(diff) || diff <= 0) return 'resetting…';
+  const sec = Math.floor(diff / 1000);
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${sec}s`;
+}
+
+function bucketLevel(pct) {
+  if (pct >= 90) return 'danger';
+  if (pct >= 75) return 'high';
+  if (pct >= 40) return 'mid';
+  return 'low';
+}
+
+// Fallback labels + sort order. ClaudeMonitor sends labels inline, but when
+// it doesn't (unknown line key, partial payload), we fall back to these.
+const USAGE_LINE_LABELS = {
+  session:           { label: 'Session (5h)',    order: 1 },
+  weekly_all_models: { label: '7 Day · All',     order: 2 },
+  weekly_sonnet:     { label: '7 Day · Sonnet',  order: 3 },
+  weekly_opus:       { label: '7 Day · Opus',    order: 4 },
+  weekly_haiku:      { label: '7 Day · Haiku',   order: 5 },
+};
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+function renderClaudeUsage(snapshot) {
+  const panel = document.getElementById('claudeUsagePanel');
+  const barsEl = document.getElementById('claudeUsageBars');
+  const planEl = document.getElementById('claudeUsagePlan');
+  const metaEl = document.getElementById('claudeUsageMeta');
+  if (!panel || !barsEl) return;
+
+  // Nothing ever ingested (or the snapshot aged past MAX_PAYLOAD_AGE_MS and
+  // was cleared server-side). Keep the panel hidden so users without
+  // ClaudeMonitor running don't see an empty widget.
+  if (!snapshot || !snapshot.payload) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+
+  const { payload, receivedAt, stale } = snapshot;
+
+  planEl.textContent = payload.subscriptionType || '';
+  const metaParts = [];
+  if (receivedAt) metaParts.push(`Updated ${timeSince(receivedAt.replace(/Z$/, ''))}`);
+  if (stale) metaParts.push('⚠ stale');
+  metaEl.textContent = metaParts.join(' · ');
+
+  panel.classList.toggle('stale', !!stale);
+  panel.classList.remove('errored');
+
+  if (payload.isLoggedIn === false) {
+    barsEl.innerHTML = `<div class="usage-error">ClaudeMonitor 未登入 claude.ai — 請開啟 ClaudeMonitor 完成登入</div>`;
+    panel.classList.add('errored');
+    return;
+  }
+
+  if (payload.error) {
+    barsEl.innerHTML = `<div class="usage-error">ClaudeMonitor: ${escapeHtml(payload.error)}</div>`;
+    panel.classList.add('errored');
+    return;
+  }
+
+  const lines = Array.isArray(payload.lines) ? payload.lines : [];
+  if (lines.length === 0) {
+    barsEl.innerHTML = `<div class="usage-empty">尚無 usage 資料</div>`;
+    return;
+  }
+
+  const sorted = [...lines].sort((a, b) => {
+    const ao = (USAGE_LINE_LABELS[a.key] && USAGE_LINE_LABELS[a.key].order) || 999;
+    const bo = (USAGE_LINE_LABELS[b.key] && USAGE_LINE_LABELS[b.key].order) || 999;
+    return ao - bo;
+  });
+
+  barsEl.innerHTML = sorted.map((line) => {
+    const label = line.label
+      || (USAGE_LINE_LABELS[line.key] && USAGE_LINE_LABELS[line.key].label)
+      || line.key
+      || '—';
+    const pct = Math.min(100, Math.max(0, Number(line.usedPct) || 0));
+    const level = bucketLevel(pct);
+    const reset = line.resetsAt
+      ? `<span class="usage-reset">resets in ${timeUntil(line.resetsAt)}</span>`
+      : '';
+    const raw = (line.used != null && line.total != null && line.unit)
+      ? ` <span class="usage-raw">(${escapeHtml(line.used)} / ${escapeHtml(line.total)} ${escapeHtml(line.unit)})</span>`
+      : '';
+    return `
+      <div class="usage-row">
+        <div class="usage-row-header">
+          <span class="usage-label">${escapeHtml(label)}${raw}</span>
+          <span class="usage-value">${pct}%</span>
+        </div>
+        <div class="usage-bar">
+          <div class="usage-bar-fill level-${level}" style="width: ${pct}%"></div>
+        </div>
+        ${reset}
+      </div>
+    `;
+  }).join('');
+}
+
+async function pollClaudeUsage() {
+  try {
+    const r = await fetch('/api/claude/usage');
+    if (!r.ok) return;
+    const snap = await r.json();
+    renderClaudeUsage(snap);
+  } catch {}
+}
+
 // ─── Status Cards ───────────────────────────────────────────
 
 async function renderStatusCards() {
@@ -661,3 +789,9 @@ setInterval(() => refresh(), REFRESH_INTERVAL);
 // in case the WS is temporarily disconnected.
 pollAgentActivity();
 setInterval(pollAgentActivity, 30000);
+
+// Claude subscription usage — server probes every 5 min, so a 60s client
+// poll is plenty (ties the "Updated Ns ago" meta to roughly a minute of
+// freshness without flooding the endpoint).
+pollClaudeUsage();
+setInterval(pollClaudeUsage, 60_000);
