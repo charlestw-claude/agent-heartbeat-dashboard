@@ -399,17 +399,15 @@ header h1 {
   border-radius: 4px;
 }
 
-/* Sub-header row: model pill on the left, activity/health signal on the
-   right. Lives between .card-header (name + ONLINE) and .card-meta. */
+/* Sub-header row: model pill + activity/health signal, both left-aligned.
+   Lives between .card-header (name + ONLINE) and .card-meta. */
 .card-subhead {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-bottom: 8px;
   min-height: 18px;
-}
-.card-subhead .card-signal {
-  margin-left: auto;
+  flex-wrap: wrap;
 }
 
 /* Model pill — which Claude model this agent's latest session is using.
