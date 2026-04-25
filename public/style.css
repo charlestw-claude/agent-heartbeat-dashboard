@@ -101,11 +101,55 @@ header h1 {
 }
 
 /* Status Cards */
+.status-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.status-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.group-label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.group-count {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+
+.group-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  text-align: center;
+}
+
 .status-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 12px;
-  margin-bottom: 24px;
 }
 
 .status-card {
@@ -157,6 +201,47 @@ header h1 {
   letter-spacing: 0.5px;
   padding: 2px 8px;
   border-radius: 4px;
+}
+
+/* Last-seen row: text on the left, model pill on the right. */
+.card-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Model pill — which Claude model this agent's latest session is using.
+   Sourced from the tail of the session jsonl, so it reflects /fast and
+   /model switches rather than whatever settings.json has frozen. */
+.card-model {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.card-model.family-opus {
+  color: #c084fc;
+  background: rgba(168, 85, 247, 0.12);
+  border-color: rgba(168, 85, 247, 0.3);
+}
+.card-model.family-sonnet {
+  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+.card-model.family-haiku {
+  color: #5eead4;
+  background: rgba(20, 184, 166, 0.12);
+  border-color: rgba(20, 184, 166, 0.3);
+}
+.card-model.family-unknown {
+  color: var(--text-dim);
+  background: var(--surface2);
+  border-color: var(--border);
 }
 
 /* Combined signal pill: shows live activity (Thinking/Working) when the
@@ -558,11 +643,11 @@ tr:hover td {
 .vm-top-agent-badge .top-pill {
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-dim);
+  color: #4ade80;
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
 }
 .vm-top-agent-badge .top-pill.cpu {
   color: #60a5fa;

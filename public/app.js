@@ -12,6 +12,25 @@ const AGENT_COLORS = {
   'Claude-Quant-2':  '#14b8a6',
 };
 
+// Status-card groups. Order here is render order; first matching group wins.
+// Empty groups still render a placeholder so the user can see slots that are
+// reserved for future agents (e.g. Agent Manager, Secretary).
+const AGENT_GROUPS = [
+  { key: 'manager',   label: 'Agent Manager', match: (n) => /manager/i.test(n) },
+  { key: 'assistant', label: 'Assistant',     match: (n) => /secretary/i.test(n) },
+  { key: 'agents',    label: 'Agents',        match: (n) => /^claude-agent-\d+$/i.test(n) },
+  { key: 'quant',     label: 'Quant',         match: (n) => /^claude-quant/i.test(n) },
+  { key: 'deloitte',  label: 'Deloitte',      match: (n) => /deloitte/i.test(n) },
+  { key: 'guest',     label: 'Guest',         match: (n) => /guest/i.test(n) },
+];
+
+function getAgentGroupKey(name) {
+  for (const g of AGENT_GROUPS) {
+    if (g.match(name)) return g.key;
+  }
+  return 'agents';
+}
+
 // ─── Utility ────────────────────────────────────────────────
 
 function formatTime(ts) {
@@ -25,9 +44,16 @@ function formatTimeShort(ts) {
 }
 
 function timeSince(ts) {
-  const now = Date.now();
-  const then = new Date(ts + 'Z').getTime();
-  const diff = Math.floor((now - then) / 1000);
+  if (!ts) return '--';
+  // Accept both SQLite-native ("YYYY-MM-DD HH:MM:SS", no timezone — stored
+  // as UTC by convention) and ISO strings with timezone (from WS pushes).
+  // The former needs an explicit 'Z' appended; the latter must not be
+  // double-terminated.
+  const needsZ = typeof ts === 'string' && !/[zZ]|[+-]\d\d:?\d\d$/.test(ts);
+  const then = new Date(needsZ ? ts + 'Z' : ts).getTime();
+  if (!Number.isFinite(then)) return '--';
+  const diff = Math.floor((Date.now() - then) / 1000);
+  if (diff < 0) return 'just now';
   if (diff < 60) return `${diff}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -209,14 +235,28 @@ async function pollAgentActivity() {
 
 // ─── Status Cards ───────────────────────────────────────────
 
+// Parse a raw model ID (e.g. "claude-opus-4-7", "claude-haiku-4-5-20251001")
+// into a compact display label and family tag for pill coloring.
+function parseModel(id) {
+  if (!id) return { label: '', family: '' };
+  const m = String(id).match(/^claude-(opus|sonnet|haiku)-(\d+)-(\d+)/i);
+  if (!m) return { label: id, family: 'unknown' };
+  const family = m[1].toLowerCase();
+  const title = family.charAt(0).toUpperCase() + family.slice(1);
+  return { label: `${title} ${m[2]}.${m[3]}`, family };
+}
+
 async function renderStatusCards() {
-  const [status, uptime] = await Promise.all([
+  const [status, uptime, models] = await Promise.all([
     fetchJson('/api/status'),
     fetchJson('/api/uptime?days=7'),
+    fetchJson('/api/agents/models').catch(() => []),
   ]);
 
   const uptimeMap = {};
   uptime.forEach(u => uptimeMap[u.agent_name] = u);
+  const modelMap = {};
+  (Array.isArray(models) ? models : []).forEach((m) => { modelMap[m.agent] = m.model; });
 
   const container = document.getElementById('statusCards');
 
@@ -225,12 +265,16 @@ async function renderStatusCards() {
     return;
   }
 
-  container.innerHTML = status.map(agent => {
+  const cardHtml = (agent) => {
     const ut = uptimeMap[agent.agent_name];
     const uptimePct = ut ? ut.uptime_pct : null;
     const uptimePctStr = uptimePct == null ? '--' : uptimePct;
     const statusClass = agent.status || 'unknown';
     const agentKey = normalizeAgentKey(agent.agent_name);
+    const mdl = parseModel(modelMap[agent.agent_name]);
+    const modelPill = mdl.label
+      ? `<span class="card-model family-${mdl.family}" title="${modelMap[agent.agent_name]}">${mdl.label}</span>`
+      : '';
 
     return `
       <div class="status-card ${statusClass}" data-agent-key="${agentKey}">
@@ -246,10 +290,39 @@ async function renderStatusCards() {
         </div>
         <div class="card-meta">
           <span>Uptime (7d): ${uptimePctStr}%</span>
-          <span class="card-lastseen" data-ts="${agent.timestamp}">Last seen: ${timeSince(agent.timestamp)}</span>
+          <div class="card-meta-row">
+            <span class="card-lastseen" data-ts="${agent.timestamp}">Last seen: ${timeSince(agent.timestamp)}</span>
+            ${modelPill}
+          </div>
           <span class="card-pid">${agent.pid ? `PID: ${agent.pid}` : ''}</span>
         </div>
       </div>
+    `;
+  };
+
+  const byGroup = {};
+  AGENT_GROUPS.forEach((g) => { byGroup[g.key] = []; });
+  for (const agent of status) {
+    const key = getAgentGroupKey(agent.agent_name);
+    (byGroup[key] || byGroup.agents).push(agent);
+  }
+  for (const key of Object.keys(byGroup)) {
+    byGroup[key].sort((a, b) => a.agent_name.localeCompare(b.agent_name));
+  }
+
+  container.innerHTML = AGENT_GROUPS.map((group) => {
+    const members = byGroup[group.key] || [];
+    const body = members.length
+      ? members.map(cardHtml).join('')
+      : '<div class="group-empty">— 尚未建立 —</div>';
+    return `
+      <section class="status-group" data-group="${group.key}">
+        <h3 class="group-label">
+          <span class="group-label-text">${group.label}</span>
+          <span class="group-count">${members.length}</span>
+        </h3>
+        <div class="status-cards">${body}</div>
+      </section>
     `;
   }).join('');
 

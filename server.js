@@ -9,6 +9,7 @@ const collector = require('./metrics/collector');
 const rollup = require('./metrics/rollup');
 const archive = require('./metrics/archive');
 const diskCaches = require('./metrics/disk-caches');
+const agentModels = require('./metrics/agent-models');
 const wsHub = require('./metrics/ws');
 
 const app = express();
@@ -281,6 +282,14 @@ app.get('/api/metrics/recent', (req, res) => {
 // GET /api/metrics/agents — current per-process RSS for bun.exe / claude.exe
 app.get('/api/metrics/agents', (req, res) => {
   res.json(collector.getAgentsBreakdown());
+});
+
+// GET /api/agents/models — current model each agent's latest session is using
+app.get('/api/agents/models', (req, res) => {
+  const rows = getDb()
+    .prepare('SELECT DISTINCT agent_name FROM heartbeats')
+    .all();
+  res.json(agentModels.getAgentModels(rows.map((r) => r.agent_name)));
 });
 
 // GET /api/disk/caches — npm/pip/puppeteer cache sizes (10-min TTL; ?refresh=1 forces rescan)
