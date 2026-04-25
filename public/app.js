@@ -486,7 +486,7 @@ function renderClaudeAnalysis(snapshot) {
         return `${hours[i]}:00<br>Avg: ${p[0].value.toFixed(2)}<br>Samples: ${samples}`;
       },
     },
-    grid: { left: 36, right: 12, top: 10, bottom: 28 },
+    grid: { left: 36, right: 16, top: 10, bottom: 28 },
     xAxis: {
       type: 'category',
       data: hours,
@@ -505,7 +505,12 @@ function renderClaudeAnalysis(snapshot) {
       markLine: {
         silent: true,
         symbol: 'none',
+        // position:'insideEndTop' anchors labels inside the plot area, just
+        // above the line at the right edge — keeps them inside grid.right
+        // even on narrow screens where the previous outside placement
+        // overflowed the chart canvas.
         lineStyle: { type: 'dashed', width: 1 },
+        label: { position: 'insideEndTop', distance: 0 },
         data: [
           { yAxis: thresholds.peak,   lineStyle: { color: TIER_COLORS.peak },   label: { color: '#fca5a5', fontSize: 10, formatter: 'Peak' } },
           { yAxis: thresholds.active, lineStyle: { color: TIER_COLORS.active }, label: { color: '#fbbf24', fontSize: 10, formatter: 'Active' } },
@@ -544,7 +549,7 @@ function renderClaudeAnalysis(snapshot) {
         return `${DOW_LABELS[dow]} ${String(h).padStart(2, '0')}:00<br>Avg: ${(v ?? 0).toFixed(2)}<br>Samples: ${samples}`;
       },
     },
-    grid: { left: 36, right: 12, top: 10, bottom: 44 },
+    grid: { left: 36, right: 16, top: 10, bottom: 44 },
     xAxis: {
       type: 'category',
       data: hours,
