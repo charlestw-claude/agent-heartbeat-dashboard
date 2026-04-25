@@ -362,7 +362,11 @@ function renderClaudeUsage(snapshot) {
   if (payload.dailyRoutineRuns) {
     const r = payload.dailyRoutineRuns;
     const suffix = (r.used != null && r.total != null) ? `(${r.used} / ${r.total})` : '';
-    rows.push(renderPctRow('Daily Routine', r.usedPct, r.resetText, r.resetAt, suffix));
+    // ClaudeMonitor labels this row "Resets daily" — payload often omits the
+    // field because the cadence is implicit, so fall back so the row doesn't
+    // render bare while every other quota row has a reset/status line below.
+    const resetText = r.resetText || 'Resets daily';
+    rows.push(renderPctRow('Daily Routine', r.usedPct, resetText, r.resetAt, suffix));
   }
   if (payload.extraUsage && payload.extraUsage.enabled) {
     const e = payload.extraUsage;
