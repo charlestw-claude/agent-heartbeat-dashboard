@@ -111,9 +111,8 @@ header h1 {
 
 .claude-usage-panel .usage-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 14px;
   flex-wrap: wrap;
 }
@@ -124,12 +123,24 @@ header h1 {
   color: var(--text);
   letter-spacing: 0.02em;
   margin: 0;
+  margin-right: 2px;
 }
 
-.claude-usage-panel .usage-header-right {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
+/* Desktop: pills sit next to the title (left); meta gets pushed to the
+   far right by the auto margin. On narrow widths the title takes its own
+   row and meta drops the auto margin so the row-2 group reads
+   [activity] [plan] [meta] left-to-right. */
+.claude-usage-panel .usage-meta {
+  margin-left: auto;
+}
+@media (max-width: 540px) {
+  .claude-usage-panel .usage-title {
+    flex-basis: 100%;
+    margin-right: 0;
+  }
+  .claude-usage-panel .usage-meta {
+    margin-left: 0;
+  }
 }
 
 .claude-usage-panel .usage-plan {
