@@ -363,7 +363,13 @@ header h1 {
   .card-header {
     flex-direction: column;
     align-items: flex-start;
+    justify-content: flex-start;
     gap: 6px;
+    text-align: left;
+  }
+  .card-name,
+  .card-badges {
+    align-self: flex-start;
   }
 }
 
