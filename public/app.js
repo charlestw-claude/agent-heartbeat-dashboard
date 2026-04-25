@@ -605,6 +605,94 @@ async function pollClaudeAnalysis() {
   } catch {}
 }
 
+// Format a fractional-hour count (e.g. 2.917 from ClaudeMonitor's eta) as
+// "2h 55m". Sub-hour values render as "Xm"; sub-minute as "<1m".
+function formatHours(h) {
+  if (h == null || !isFinite(h) || h < 0) return '--';
+  const totalMin = Math.round(h * 60);
+  if (totalMin < 1) return '<1m';
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  if (hh === 0) return `${mm}m`;
+  return `${hh}h ${mm}m`;
+}
+
+function renderClaudeStats(snapshot) {
+  const wrap = document.getElementById('claudeUsageStats');
+  if (!wrap) return;
+
+  const payload = snapshot && snapshot.payload;
+  if (!payload) { wrap.hidden = true; return; }
+  wrap.hidden = false;
+
+  const noteEl = document.getElementById('claudeStatsNote');
+  if (noteEl) {
+    const lookback = payload.lookbackDays != null ? `rolling ${payload.lookbackDays} days` : 'rolling window';
+    const valid = payload.validSessions != null && payload.totalSessions != null
+      ? ` · ${payload.validSessions}/${payload.totalSessions} valid sessions`
+      : '';
+    noteEl.textContent = `· ${lookback}${valid}`;
+  }
+
+  // SESSION peak / avg
+  const session = payload.session || {};
+  const peak = session.peakPct != null ? Math.round(session.peakPct) : null;
+  const avg = session.avgPct != null ? Math.round(session.avgPct) : null;
+  document.getElementById('statSessionValue').textContent =
+    peak != null && avg != null ? `${peak}% / ${avg}%` : '--';
+  document.getElementById('statSessionSub').textContent =
+    session.sampleCount != null ? `n=${session.sampleCount}` : '';
+
+  // LIVE RATE
+  const rate = payload.rate || {};
+  const rateValueEl = document.getElementById('statRateValue');
+  const rateSubEl = document.getElementById('statRateSub');
+  if (rate.hasNow && rate.nowPctPerHour != null) {
+    rateValueEl.textContent = `${rate.nowPctPerHour.toFixed(1)} %/h`;
+  } else {
+    rateValueEl.textContent = '—';
+  }
+  rateSubEl.textContent = rate.sevenDayAvgPctPerHour != null
+    ? `7d avg ${rate.sevenDayAvgPctPerHour.toFixed(1)} %/h`
+    : '';
+
+  // ETA to 100%
+  const eta = payload.eta || {};
+  const etaValueEl = document.getElementById('statEtaValue');
+  const etaSubEl = document.getElementById('statEtaSub');
+  if (eta.hasEstimate && eta.hoursRemaining != null) {
+    etaValueEl.textContent = formatHours(eta.hoursRemaining);
+    etaSubEl.textContent = eta.beforeReset === false
+      ? "won't max this session"
+      : 'before reset';
+  } else {
+    etaValueEl.textContent = '—';
+    etaSubEl.textContent = eta.note || 'not enough data';
+  }
+
+  // STREAK + last 7 days dots (index 0 = oldest, 6 = today)
+  const streak = payload.streak || {};
+  document.getElementById('statStreakValue').textContent =
+    streak.current != null ? `${streak.current}d` : '--';
+  const dotsEl = document.getElementById('statStreakDots');
+  const last7 = Array.isArray(streak.last7Active) ? streak.last7Active : [];
+  // Show "best N" inline-ish via the dot row title rather than a separate sub
+  // line — keeps the card height matching the others.
+  dotsEl.title = streak.best != null ? `Best streak: ${streak.best} days` : '';
+  dotsEl.innerHTML = last7
+    .map((on) => `<span class="usage-stat-dot${on ? ' active' : ''}"></span>`)
+    .join('');
+}
+
+async function pollClaudeStats() {
+  try {
+    const r = await fetch('/api/claude/stats');
+    if (!r.ok) return;
+    const snap = await r.json();
+    renderClaudeStats(snap);
+  } catch {}
+}
+
 // ─── Status Cards ───────────────────────────────────────────
 
 // Parse a raw model ID (e.g. "claude-opus-4-7", "claude-haiku-4-5-20251001")
@@ -1082,6 +1170,12 @@ setInterval(pollClaudeUsage, 60_000);
 // every 5 min, so 5 min on the client matches.
 pollClaudeAnalysis();
 setInterval(pollClaudeAnalysis, 5 * 60_000);
+
+// Stats poll cadence matches the server-side poller (5 min). The "live"
+// rate field changes faster than that upstream, but ClaudeMonitor only
+// publishes a refreshed snapshot every ~5 min anyway.
+pollClaudeStats();
+setInterval(pollClaudeStats, 5 * 60_000);
 
 // Re-layout panel charts on viewport resize so they stay sharp.
 window.addEventListener('resize', () => {

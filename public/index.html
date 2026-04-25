@@ -50,6 +50,31 @@
           <div id="claudeUsageHeatmap" class="usage-chart usage-chart-heatmap"></div>
         </div>
       </div>
+      <div class="usage-stats" id="claudeUsageStats" hidden>
+        <div class="usage-stats-title">Statistics <span class="usage-chart-sub" id="claudeStatsNote"></span></div>
+        <div class="usage-stats-grid">
+          <div class="usage-stat" id="statSession">
+            <div class="usage-stat-label">SESSION peak / avg</div>
+            <div class="usage-stat-value" id="statSessionValue">--</div>
+            <div class="usage-stat-sub" id="statSessionSub"></div>
+          </div>
+          <div class="usage-stat" id="statRate">
+            <div class="usage-stat-label">LIVE RATE</div>
+            <div class="usage-stat-value" id="statRateValue">--</div>
+            <div class="usage-stat-sub" id="statRateSub"></div>
+          </div>
+          <div class="usage-stat" id="statEta">
+            <div class="usage-stat-label">ETA to 100%</div>
+            <div class="usage-stat-value" id="statEtaValue">--</div>
+            <div class="usage-stat-sub" id="statEtaSub"></div>
+          </div>
+          <div class="usage-stat" id="statStreak">
+            <div class="usage-stat-label">STREAK</div>
+            <div class="usage-stat-value" id="statStreakValue">--</div>
+            <div class="usage-stat-dots" id="statStreakDots"></div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- VM Realtime Metrics -->

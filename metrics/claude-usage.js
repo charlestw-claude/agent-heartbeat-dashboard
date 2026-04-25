@@ -25,6 +25,7 @@ const SOURCE_HOST = '127.0.0.1';
 const SOURCE_PORT = 6736;
 const USAGE_PATH = '/v1/usage';
 const ANALYSIS_PATH = '/v1/analysis';
+const STATS_PATH = '/v1/stats';
 // Usage snapshot poll cadence. ClaudeMonitor refreshes its own scrape every
 // ~5 min, so polling more often than that just re-reads a cached snapshot —
 // but a 60s cadence keeps `receivedAt` fresh enough that the UI's "Updated
@@ -33,13 +34,21 @@ const USAGE_POLL_MS = 60 * 1000;
 // Analysis is a rolling 14-day aggregate — it only changes meaningfully when
 // a new hour's worth of activity rolls in. 5 min is more than enough.
 const ANALYSIS_POLL_MS = 5 * 60 * 1000;
+// Stats is a rolling-window aggregate (lookbackDays=30 by default) plus a
+// "live" rate/eta block. The aggregate side only shifts hourly; the live
+// side updates at most every minute. 5 min is the right cadence for both —
+// matches /v1/analysis and avoids hammering the upstream for numbers that
+// don't actually move that often.
+const STATS_POLL_MS = 5 * 60 * 1000;
 const STALE_THRESHOLD_MS = 3 * USAGE_POLL_MS; // 3 missed usage polls
 const ANALYSIS_STALE_MS = 3 * ANALYSIS_POLL_MS;
+const STATS_STALE_MS = 3 * STATS_POLL_MS;
 const MAX_PAYLOAD_AGE_MS = 6 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 3000;
 
 const usageState = { payload: null, receivedAt: null, lastError: null, timer: null };
 const analysisState = { payload: null, receivedAt: null, lastError: null, timer: null };
+const statsState = { payload: null, receivedAt: null, lastError: null, timer: null };
 
 function fetchJson(path) {
   return new Promise((resolve, reject) => {
@@ -83,6 +92,7 @@ function makePoller(state, path, intervalMs) {
 
 const pollUsage = makePoller(usageState, USAGE_PATH, USAGE_POLL_MS);
 const pollAnalysis = makePoller(analysisState, ANALYSIS_PATH, ANALYSIS_POLL_MS);
+const pollStats = makePoller(statsState, STATS_PATH, STATS_POLL_MS);
 
 function start() {
   if (!usageState.timer) {
@@ -95,10 +105,15 @@ function start() {
     analysisState.timer = setInterval(pollAnalysis, ANALYSIS_POLL_MS);
     if (analysisState.timer.unref) analysisState.timer.unref();
   }
+  if (!statsState.timer) {
+    pollStats();
+    statsState.timer = setInterval(pollStats, STATS_POLL_MS);
+    if (statsState.timer.unref) statsState.timer.unref();
+  }
 }
 
 function stop() {
-  for (const s of [usageState, analysisState]) {
+  for (const s of [usageState, analysisState, statsState]) {
     if (s.timer) { clearInterval(s.timer); s.timer = null; }
   }
 }
@@ -141,4 +156,23 @@ function getAnalysis() {
   };
 }
 
-module.exports = { start, stop, getSnapshot, getAnalysis, SCHEMA_VERSION };
+function getStats() {
+  const now = Date.now();
+  if (statsState.receivedAt && now - statsState.receivedAt > MAX_PAYLOAD_AGE_MS) {
+    statsState.payload = null;
+    statsState.receivedAt = null;
+  }
+  const stale = statsState.receivedAt ? now - statsState.receivedAt > STATS_STALE_MS : true;
+  return {
+    payload: statsState.payload,
+    receivedAt: statsState.receivedAt ? new Date(statsState.receivedAt).toISOString() : null,
+    stale,
+    lastError: statsState.lastError,
+    staleThresholdMs: STATS_STALE_MS,
+    pollIntervalMs: STATS_POLL_MS,
+    schemaVersion: SCHEMA_VERSION,
+    source: `http://${SOURCE_HOST}:${SOURCE_PORT}${STATS_PATH}`,
+  };
+}
+
+module.exports = { start, stop, getSnapshot, getAnalysis, getStats, SCHEMA_VERSION };
