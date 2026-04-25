@@ -624,20 +624,18 @@ async function renderStatusCards() {
       <div class="status-card ${statusClass}" data-agent-key="${agentKey}">
         <div class="card-header">
           <span class="card-name">${agent.agent_name.replace('Claude-', '')}</span>
-          <div class="card-badges">
-            <span class="card-status ${statusClass}">${statusClass}</span>
-            <span class="card-signal"
-                  data-signal-for="${agentKey}"
-                  data-uptime="${uptimePct == null ? '' : uptimePct}"
-                  data-status-class="${statusClass}"></span>
-          </div>
+          <span class="card-status ${statusClass}">${statusClass}</span>
+        </div>
+        <div class="card-subhead">
+          ${modelPill}
+          <span class="card-signal"
+                data-signal-for="${agentKey}"
+                data-uptime="${uptimePct == null ? '' : uptimePct}"
+                data-status-class="${statusClass}"></span>
         </div>
         <div class="card-meta">
           <span>Uptime (7d): ${uptimePctStr}%</span>
-          <div class="card-meta-row">
-            <span class="card-lastseen" data-ts="${agent.timestamp}">Last seen: ${timeSince(agent.timestamp)}</span>
-            ${modelPill}
-          </div>
+          <span class="card-lastseen" data-ts="${agent.timestamp}">Last seen: ${timeSince(agent.timestamp)}</span>
           <span class="card-pid">${agent.pid ? `PID: ${agent.pid}` : ''}</span>
         </div>
       </div>
