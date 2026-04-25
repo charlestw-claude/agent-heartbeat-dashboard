@@ -266,7 +266,7 @@ header h1 {
   width: 100%;
 }
 .claude-usage-panel .usage-chart-heatmap {
-  height: 180px;
+  height: 210px;
 }
 
 .claude-usage-panel.errored {

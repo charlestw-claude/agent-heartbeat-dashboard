@@ -384,6 +384,10 @@ async function pollClaudeUsage() {
 let claudeUsage24hInstance = null;
 let claudeUsageHeatmapInstance = null;
 const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// ECharts category yAxis renders data[0] at the bottom. To put Monday at the
+// top and Sunday at the bottom, the y labels are listed bottom→top.
+const HEATMAP_Y_LABELS = ['Sun', 'Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon'];
+const dowToYIndex = (dow) => (7 - dow) % 7;
 
 // Map a value to a color tier using the analysis thresholds. ClaudeMonitor
 // publishes peak/active/normal so the heatmap uses the same boundaries the
@@ -460,7 +464,7 @@ function renderClaudeAnalysis(snapshot) {
     xAxis: {
       type: 'category',
       data: hours,
-      axisLabel: { color: '#9ba0b5', fontSize: 10, interval: 1 },
+      axisLabel: { color: '#9ba0b5', fontSize: 10, interval: 'auto', hideOverlap: true },
       axisLine: { lineStyle: { color: '#2e3345' } },
     },
     yAxis: {
@@ -495,8 +499,8 @@ function renderClaudeAnalysis(snapshot) {
   (payload.hourlyByDow || []).forEach((row, dow) => {
     row.forEach((v, h) => {
       heatmapData.push({
-        value: [h, dow, v],
-        itemStyle: { color: analysisColor(v, thresholds) },
+        value: [h, dowToYIndex(dow), v],
+        realDow: dow,
       });
     });
   });
@@ -508,23 +512,45 @@ function renderClaudeAnalysis(snapshot) {
       borderColor: '#2e3345',
       textStyle: { color: '#e4e6ed', fontSize: 12 },
       formatter: (p) => {
-        const [h, dow, v] = p.value;
+        const [h, , v] = p.value;
+        const dow = p.data.realDow;
         const samples = (samplesByDow[dow] || [])[h] ?? 0;
         return `${DOW_LABELS[dow]} ${String(h).padStart(2, '0')}:00<br>Avg: ${(v ?? 0).toFixed(2)}<br>Samples: ${samples}`;
       },
     },
-    grid: { left: 36, right: 12, top: 10, bottom: 24 },
+    grid: { left: 36, right: 12, top: 10, bottom: 44 },
     xAxis: {
       type: 'category',
       data: hours,
-      axisLabel: { color: '#9ba0b5', fontSize: 9, interval: 1 },
+      axisLabel: { color: '#9ba0b5', fontSize: 9, interval: 'auto', hideOverlap: true },
       splitArea: { show: false },
     },
     yAxis: {
       type: 'category',
-      data: DOW_LABELS,
+      data: HEATMAP_Y_LABELS,
       axisLabel: { color: '#9ba0b5', fontSize: 10 },
       splitArea: { show: false },
+    },
+    visualMap: {
+      type: 'piecewise',
+      show: true,
+      orient: 'horizontal',
+      left: 'center',
+      bottom: 0,
+      itemWidth: 12,
+      itemHeight: 10,
+      itemGap: 6,
+      textGap: 4,
+      padding: 0,
+      textStyle: { color: '#9ba0b5', fontSize: 10 },
+      pieces: [
+        { value: 0, label: '—', color: '#1a1d27' },
+        { gt: 0, lt: thresholds.normal, label: 'Quiet', color: '#1f4f3a' },
+        { gte: thresholds.normal, lt: thresholds.active, label: 'Normal', color: '#3b82f6' },
+        { gte: thresholds.active, lt: thresholds.peak, label: 'Active', color: '#f59e0b' },
+        { gte: thresholds.peak, label: 'Peak', color: '#dc2626' },
+      ],
+      outOfRange: { color: '#1a1d27' },
     },
     series: [{
       type: 'heatmap',
