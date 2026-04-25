@@ -354,7 +354,6 @@ header h1 {
   border-radius: 10px;
   padding: 16px;
   transition: border-color 0.2s;
-  container-type: inline-size;
 }
 
 .status-card:hover {
@@ -428,11 +427,13 @@ header h1 {
 }
 
 /* Narrow cards (mobile): swap the wide-position signal + meta-row model
-   pill for the dedicated subhead row. */
-@container (max-width: 240px) {
+   pill for the dedicated subhead row. Use a viewport @media query
+   instead of @container so older Safari (which renders both layouts
+   when the container query fails to bind) is also handled. */
+@media (max-width: 540px) {
   .card-subhead { display: flex; }
   .card-signal-wide,
-  .card-model-wide { display: none; }
+  .card-model-wide { display: none !important; }
   .card-model-narrow { display: inline-block; }
   .card-signal-narrow:not(:empty) { display: inline-block; }
 }
