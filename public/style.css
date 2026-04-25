@@ -162,11 +162,14 @@ header h1 {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.claude-usage-panel .usage-activity.level-maxed  { color: #fca5a5; background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.4); }
-.claude-usage-panel .usage-activity.level-peak   { color: #fbbf24; background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); }
-.claude-usage-panel .usage-activity.level-active { color: #6ee7b7; background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4); }
-.claude-usage-panel .usage-activity.level-normal { color: #93c5fd; background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.4); }
-.claude-usage-panel .usage-activity.level-quiet  { color: var(--text-dim); background: var(--surface2); border-color: var(--border); }
+/* Tier palette mirrors ClaudeMonitor's tray UI:
+   Maxed = pink/magenta · Peak = red · Active = orange · Normal = green
+   · Quiet = blue. (Earlier we had Quiet/Normal swapped vs the tray.) */
+.claude-usage-panel .usage-activity.level-maxed  { color: #f9a8d4; background: rgba(236, 72, 153, 0.18); border-color: rgba(236, 72, 153, 0.45); }
+.claude-usage-panel .usage-activity.level-peak   { color: #fca5a5; background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.4); }
+.claude-usage-panel .usage-activity.level-active { color: #fbbf24; background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); }
+.claude-usage-panel .usage-activity.level-normal { color: #6ee7b7; background: rgba(34, 197, 94, 0.15); border-color: rgba(34, 197, 94, 0.4); }
+.claude-usage-panel .usage-activity.level-quiet  { color: #93c5fd; background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.4); }
 
 .claude-usage-panel .usage-bars {
   display: grid;

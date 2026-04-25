@@ -397,15 +397,29 @@ const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const HEATMAP_Y_LABELS = ['Sun', 'Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon'];
 const dowToYIndex = (dow) => (7 - dow) % 7;
 
-// Map a value to a color tier using the analysis thresholds. ClaudeMonitor
-// publishes peak/active/normal so the heatmap uses the same boundaries the
-// tray badge does.
+// Tier colors mirror ClaudeMonitor's tray UI legend:
+//   Quiet   = blue
+//   Normal  = green
+//   Active  = orange
+//   Peak    = red
+//   No data = gray
+// (Maxed lives in the badge — Session% / Weekly% absolute trigger — not
+// in the hourly heatmap, so it's only present in the legend below.)
+const TIER_COLORS = {
+  noData: '#2e3345',
+  quiet:  '#3b82f6',
+  normal: '#22c55e',
+  active: '#f59e0b',
+  peak:   '#ef4444',
+  maxed:  '#ec4899',
+};
+
 function analysisColor(v, thresholds) {
-  if (v == null || v <= 0) return '#1a1d27';
-  if (v >= thresholds.peak)   return '#dc2626'; // Peak
-  if (v >= thresholds.active) return '#f59e0b'; // Active
-  if (v >= thresholds.normal) return '#3b82f6'; // Normal
-  return '#1f4f3a';                              // Quiet (low non-zero)
+  if (v == null || v <= 0) return TIER_COLORS.noData;
+  if (v >= thresholds.peak)   return TIER_COLORS.peak;
+  if (v >= thresholds.active) return TIER_COLORS.active;
+  if (v >= thresholds.normal) return TIER_COLORS.normal;
+  return TIER_COLORS.quiet;
 }
 
 // Fallback color thresholds when ClaudeMonitor doesn't have ≥3 days of
@@ -489,8 +503,8 @@ function renderClaudeAnalysis(snapshot) {
         symbol: 'none',
         lineStyle: { type: 'dashed', width: 1 },
         data: [
-          { yAxis: thresholds.peak,   lineStyle: { color: '#dc2626' }, label: { color: '#fca5a5', fontSize: 10, formatter: 'Peak' } },
-          { yAxis: thresholds.active, lineStyle: { color: '#f59e0b' }, label: { color: '#fbbf24', fontSize: 10, formatter: 'Active' } },
+          { yAxis: thresholds.peak,   lineStyle: { color: TIER_COLORS.peak },   label: { color: '#fca5a5', fontSize: 10, formatter: 'Peak' } },
+          { yAxis: thresholds.active, lineStyle: { color: TIER_COLORS.active }, label: { color: '#fbbf24', fontSize: 10, formatter: 'Active' } },
         ],
       },
     }],
@@ -552,13 +566,17 @@ function renderClaudeAnalysis(snapshot) {
       padding: 0,
       textStyle: { color: '#9ba0b5', fontSize: 10 },
       pieces: [
-        { value: 0, label: '—', color: '#1a1d27' },
-        { gt: 0, lt: thresholds.normal, label: 'Quiet', color: '#1f4f3a' },
-        { gte: thresholds.normal, lt: thresholds.active, label: 'Normal', color: '#3b82f6' },
-        { gte: thresholds.active, lt: thresholds.peak, label: 'Active', color: '#f59e0b' },
-        { gte: thresholds.peak, label: 'Peak', color: '#dc2626' },
+        { value: 0, label: 'No data', color: TIER_COLORS.noData },
+        { gt: 0, lt: thresholds.normal, label: 'Quiet', color: TIER_COLORS.quiet },
+        { gte: thresholds.normal, lt: thresholds.active, label: 'Normal', color: TIER_COLORS.normal },
+        { gte: thresholds.active, lt: thresholds.peak, label: 'Active', color: TIER_COLORS.active },
+        { gte: thresholds.peak, label: 'Peak', color: TIER_COLORS.peak },
+        // Maxed is a Session/Weekly absolute trigger that the hourly avg
+        // doesn't carry — never matches data, but renders in the legend
+        // so users see the tier exists.
+        { gte: 1e9, label: 'Maxed', color: TIER_COLORS.maxed },
       ],
-      outOfRange: { color: '#1a1d27' },
+      outOfRange: { color: TIER_COLORS.noData },
     },
     series: [{
       type: 'heatmap',
