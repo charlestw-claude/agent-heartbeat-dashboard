@@ -230,6 +230,45 @@ header h1 {
   padding: 10px 2px;
 }
 
+/* Activity analysis charts (24h bar + 7×24 heatmap), inside the same panel. */
+.claude-usage-panel .usage-charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 900px) {
+  .claude-usage-panel .usage-charts {
+    grid-template-columns: 1fr;
+  }
+}
+.claude-usage-panel .usage-chart-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.claude-usage-panel .usage-chart-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.claude-usage-panel .usage-chart-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 400;
+  margin-left: 4px;
+}
+.claude-usage-panel .usage-chart {
+  height: 160px;
+  width: 100%;
+}
+.claude-usage-panel .usage-chart-heatmap {
+  height: 180px;
+}
+
 .claude-usage-panel.errored {
   border-color: rgba(239, 68, 68, 0.35);
 }

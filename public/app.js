@@ -379,6 +379,171 @@ async function pollClaudeUsage() {
   } catch {}
 }
 
+// ─── Claude Activity Analysis (24h bar + 7×24 heatmap) ──────
+
+let claudeUsage24hInstance = null;
+let claudeUsageHeatmapInstance = null;
+const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Map a value to a color tier using the analysis thresholds. ClaudeMonitor
+// publishes peak/active/normal so the heatmap uses the same boundaries the
+// tray badge does.
+function analysisColor(v, thresholds) {
+  if (v == null || v <= 0) return '#1a1d27';
+  if (v >= thresholds.peak)   return '#dc2626'; // Peak
+  if (v >= thresholds.active) return '#f59e0b'; // Active
+  if (v >= thresholds.normal) return '#3b82f6'; // Normal
+  return '#1f4f3a';                              // Quiet (low non-zero)
+}
+
+// Fallback color thresholds when ClaudeMonitor doesn't have ≥3 days of
+// history yet (per API.md: FallbackPeak=3.0 / FallbackActive=1.5 / FallbackNormal=0.3).
+// Used so the charts still light up meaningfully on day 1 instead of
+// showing a blank heatmap until percentile thresholds activate.
+const FALLBACK_THRESHOLDS = { peak: 3.0, active: 1.5, normal: 0.3 };
+
+function renderClaudeAnalysis(snapshot) {
+  const wrap = document.getElementById('claudeUsageCharts');
+  const noteEl = document.getElementById('claudeAnalysisNote');
+  if (!wrap) return;
+
+  const payload = snapshot && snapshot.payload;
+  // Hide only when we genuinely have nothing to show.
+  if (!payload || !payload.hourlyAvg) {
+    wrap.hidden = true;
+    return;
+  }
+  const anyData = payload.hourlyAvg.some((v) => v > 0);
+  if (!anyData) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+
+  const useFallback = !payload.hasEnoughData;
+  const thresholds = useFallback
+    ? FALLBACK_THRESHOLDS
+    : { peak: payload.peakThreshold, active: payload.activeThreshold, normal: payload.normalThreshold };
+
+  if (noteEl) {
+    const spanBit = payload.spanDays != null ? `rolling ${payload.spanDays} days` : '';
+    const fallbackBit = useFallback ? ' · fallback thresholds' : '';
+    noteEl.textContent = (spanBit || fallbackBit) ? `· ${spanBit}${fallbackBit}` : '';
+  }
+
+  // 24-hour bar
+  if (!claudeUsage24hInstance) {
+    claudeUsage24hInstance = echarts.init(
+      document.getElementById('claudeUsage24hChart'), null, { renderer: 'canvas' }
+    );
+  }
+  const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+  const barData = (payload.hourlyAvg || []).map((v) => ({
+    value: v,
+    itemStyle: { color: analysisColor(v, thresholds) },
+  }));
+  claudeUsage24hInstance.setOption({
+    backgroundColor: 'transparent',
+    textStyle: { color: '#9ba0b5' },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#1a1d27',
+      borderColor: '#2e3345',
+      textStyle: { color: '#e4e6ed', fontSize: 12 },
+      formatter: (p) => {
+        const i = p[0].dataIndex;
+        const samples = (payload.hourlySamples || [])[i] ?? 0;
+        return `${hours[i]}:00<br>Avg: ${p[0].value.toFixed(2)}<br>Samples: ${samples}`;
+      },
+    },
+    grid: { left: 36, right: 12, top: 10, bottom: 28 },
+    xAxis: {
+      type: 'category',
+      data: hours,
+      axisLabel: { color: '#9ba0b5', fontSize: 10, interval: 1 },
+      axisLine: { lineStyle: { color: '#2e3345' } },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { color: '#9ba0b5', fontSize: 10 },
+      splitLine: { lineStyle: { color: '#2e334522' } },
+    },
+    series: [{
+      type: 'bar',
+      data: barData,
+      barCategoryGap: '20%',
+      markLine: {
+        silent: true,
+        symbol: 'none',
+        lineStyle: { type: 'dashed', width: 1 },
+        data: [
+          { yAxis: thresholds.peak,   lineStyle: { color: '#dc2626' }, label: { color: '#fca5a5', fontSize: 10, formatter: 'Peak' } },
+          { yAxis: thresholds.active, lineStyle: { color: '#f59e0b' }, label: { color: '#fbbf24', fontSize: 10, formatter: 'Active' } },
+        ],
+      },
+    }],
+  }, true);
+
+  // 7×24 heatmap
+  if (!claudeUsageHeatmapInstance) {
+    claudeUsageHeatmapInstance = echarts.init(
+      document.getElementById('claudeUsageHeatmap'), null, { renderer: 'canvas' }
+    );
+  }
+  const heatmapData = [];
+  const samplesByDow = payload.hourlySamplesByDow || [];
+  (payload.hourlyByDow || []).forEach((row, dow) => {
+    row.forEach((v, h) => {
+      heatmapData.push({
+        value: [h, dow, v],
+        itemStyle: { color: analysisColor(v, thresholds) },
+      });
+    });
+  });
+  claudeUsageHeatmapInstance.setOption({
+    backgroundColor: 'transparent',
+    textStyle: { color: '#9ba0b5' },
+    tooltip: {
+      backgroundColor: '#1a1d27',
+      borderColor: '#2e3345',
+      textStyle: { color: '#e4e6ed', fontSize: 12 },
+      formatter: (p) => {
+        const [h, dow, v] = p.value;
+        const samples = (samplesByDow[dow] || [])[h] ?? 0;
+        return `${DOW_LABELS[dow]} ${String(h).padStart(2, '0')}:00<br>Avg: ${(v ?? 0).toFixed(2)}<br>Samples: ${samples}`;
+      },
+    },
+    grid: { left: 36, right: 12, top: 10, bottom: 24 },
+    xAxis: {
+      type: 'category',
+      data: hours,
+      axisLabel: { color: '#9ba0b5', fontSize: 9, interval: 1 },
+      splitArea: { show: false },
+    },
+    yAxis: {
+      type: 'category',
+      data: DOW_LABELS,
+      axisLabel: { color: '#9ba0b5', fontSize: 10 },
+      splitArea: { show: false },
+    },
+    series: [{
+      type: 'heatmap',
+      data: heatmapData,
+      itemStyle: { borderColor: '#1a1d27', borderWidth: 1, borderRadius: 2 },
+      emphasis: { itemStyle: { borderColor: '#fff', borderWidth: 1 } },
+    }],
+  }, true);
+}
+
+async function pollClaudeAnalysis() {
+  try {
+    const r = await fetch('/api/claude/analysis');
+    if (!r.ok) return;
+    const snap = await r.json();
+    renderClaudeAnalysis(snap);
+  } catch {}
+}
+
 // ─── Status Cards ───────────────────────────────────────────
 
 async function renderStatusCards() {
@@ -820,3 +985,14 @@ setInterval(pollAgentActivity, 30000);
 // freshness without flooding the endpoint).
 pollClaudeUsage();
 setInterval(pollClaudeUsage, 60_000);
+
+// Activity analysis is a rolling 14-day aggregate — the server only refetches
+// every 5 min, so 5 min on the client matches.
+pollClaudeAnalysis();
+setInterval(pollClaudeAnalysis, 5 * 60_000);
+
+// Re-layout panel charts on viewport resize so they stay sharp.
+window.addEventListener('resize', () => {
+  if (claudeUsage24hInstance) claudeUsage24hInstance.resize();
+  if (claudeUsageHeatmapInstance) claudeUsageHeatmapInstance.resize();
+});

@@ -295,6 +295,11 @@ app.get('/api/claude/usage', (req, res) => {
   res.json(claudeUsage.getSnapshot());
 });
 
+// GET /api/claude/analysis — peak-analysis matrix (24h avg + 7×24 DoW).
+app.get('/api/claude/analysis', (req, res) => {
+  res.json(claudeUsage.getAnalysis());
+});
+
 // GET /api/metrics/1min?hours=24
 app.get('/api/metrics/1min', (req, res) => {
   const hours = Math.min(parseInt(req.query.hours) || 24, 24 * 30);

@@ -26,6 +26,11 @@
       </div>
     </header>
 
+    <!-- Status Cards (grouped) -->
+    <section class="status-groups" id="statusCards">
+      <div class="loading">Loading...</div>
+    </section>
+
     <!-- Claude Subscription Usage -->
     <section class="claude-usage-panel" id="claudeUsagePanel" hidden>
       <div class="usage-header">
@@ -37,11 +42,16 @@
         </div>
       </div>
       <div class="usage-bars" id="claudeUsageBars"></div>
-    </section>
-
-    <!-- Status Cards (grouped) -->
-    <section class="status-groups" id="statusCards">
-      <div class="loading">Loading...</div>
+      <div class="usage-charts" id="claudeUsageCharts" hidden>
+        <div class="usage-chart-block">
+          <div class="usage-chart-title">24hr Average <span class="usage-chart-sub" id="claudeAnalysisNote"></span></div>
+          <div id="claudeUsage24hChart" class="usage-chart"></div>
+        </div>
+        <div class="usage-chart-block">
+          <div class="usage-chart-title">7×24 Heatmap <span class="usage-chart-sub">DoW × hour, rolling 14 days</span></div>
+          <div id="claudeUsageHeatmap" class="usage-chart usage-chart-heatmap"></div>
+        </div>
+      </div>
     </section>
 
     <!-- VM Realtime Metrics -->
