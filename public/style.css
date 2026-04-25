@@ -354,6 +354,7 @@ header h1 {
   border-radius: 10px;
   padding: 16px;
   transition: border-color 0.2s;
+  container-type: inline-size;
 }
 
 .status-card:hover {
@@ -399,15 +400,41 @@ header h1 {
   border-radius: 4px;
 }
 
-/* Sub-header row: model pill + activity/health signal, both left-aligned.
-   Lives between .card-header (name + ONLINE) and .card-meta. */
-.card-subhead {
+/* Last-seen row: text on the left, model pill on the right. */
+.card-meta-row {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Sub-header row: model pill + activity/health signal, both left-aligned.
+   Hidden by default; only shown when the card is too narrow (container
+   query below) to fit name + status + signal on one row. */
+.card-subhead {
+  display: none;
   align-items: center;
   gap: 6px;
   margin-bottom: 8px;
   min-height: 18px;
   flex-wrap: wrap;
+}
+
+/* Default (wide cards): show the wide model pill (in the meta row) and
+   the wide-position signal (in the header). Narrow variants hidden. */
+.card-model-narrow,
+.card-signal-narrow {
+  display: none;
+}
+
+/* Narrow cards (mobile): swap the wide-position signal + meta-row model
+   pill for the dedicated subhead row. */
+@container (max-width: 240px) {
+  .card-subhead { display: flex; }
+  .card-signal-wide,
+  .card-model-wide { display: none; }
+  .card-model-narrow { display: inline-block; }
+  .card-signal-narrow:not(:empty) { display: inline-block; }
 }
 
 /* Model pill — which Claude model this agent's latest session is using.

@@ -202,8 +202,9 @@ function applyHeartbeatsPush(data) {
     const pidEl = card.querySelector('.card-pid');
     if (pidEl) pidEl.textContent = a.pid ? `PID: ${a.pid}` : '';
 
-    const signal = card.querySelector('.card-signal');
-    if (signal) signal.setAttribute('data-status-class', a.status);
+    card.querySelectorAll('.card-signal').forEach((s) => {
+      s.setAttribute('data-status-class', a.status);
+    });
   }
   if (anyStatusChanged) {
     applySignalsToCards(lastAgentSignals);
@@ -616,26 +617,38 @@ async function renderStatusCards() {
     const statusClass = agent.status || 'unknown';
     const agentKey = normalizeAgentKey(agent.agent_name);
     const mdl = parseModel(modelMap[agent.agent_name]);
-    const modelPill = mdl.label
-      ? `<span class="card-model family-${mdl.family}" title="${modelMap[agent.agent_name]}">${mdl.label}</span>`
+    const modelPillNarrow = mdl.label
+      ? `<span class="card-model card-model-narrow family-${mdl.family}" title="${modelMap[agent.agent_name]}">${mdl.label}</span>`
+      : '';
+    const modelPillWide = mdl.label
+      ? `<span class="card-model card-model-wide family-${mdl.family}" title="${modelMap[agent.agent_name]}">${mdl.label}</span>`
       : '';
 
     return `
       <div class="status-card ${statusClass}" data-agent-key="${agentKey}">
         <div class="card-header">
           <span class="card-name">${agent.agent_name.replace('Claude-', '')}</span>
-          <span class="card-status ${statusClass}">${statusClass}</span>
+          <div class="card-badges">
+            <span class="card-status ${statusClass}">${statusClass}</span>
+            <span class="card-signal card-signal-wide"
+                  data-signal-for="${agentKey}"
+                  data-uptime="${uptimePct == null ? '' : uptimePct}"
+                  data-status-class="${statusClass}"></span>
+          </div>
         </div>
         <div class="card-subhead">
-          ${modelPill}
-          <span class="card-signal"
+          ${modelPillNarrow}
+          <span class="card-signal card-signal-narrow"
                 data-signal-for="${agentKey}"
                 data-uptime="${uptimePct == null ? '' : uptimePct}"
                 data-status-class="${statusClass}"></span>
         </div>
         <div class="card-meta">
           <span>Uptime (7d): ${uptimePctStr}%</span>
-          <span class="card-lastseen" data-ts="${agent.timestamp}">Last seen: ${timeSince(agent.timestamp)}</span>
+          <div class="card-meta-row">
+            <span class="card-lastseen" data-ts="${agent.timestamp}">Last seen: ${timeSince(agent.timestamp)}</span>
+            ${modelPillWide}
+          </div>
           <span class="card-pid">${agent.pid ? `PID: ${agent.pid}` : ''}</span>
         </div>
       </div>
