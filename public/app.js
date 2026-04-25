@@ -44,9 +44,16 @@ function formatTimeShort(ts) {
 }
 
 function timeSince(ts) {
-  const now = Date.now();
-  const then = new Date(ts + 'Z').getTime();
-  const diff = Math.floor((now - then) / 1000);
+  if (!ts) return '--';
+  // Accept both SQLite-native ("YYYY-MM-DD HH:MM:SS", no timezone — stored
+  // as UTC by convention) and ISO strings with timezone (from WS pushes).
+  // The former needs an explicit 'Z' appended; the latter must not be
+  // double-terminated.
+  const needsZ = typeof ts === 'string' && !/[zZ]|[+-]\d\d:?\d\d$/.test(ts);
+  const then = new Date(needsZ ? ts + 'Z' : ts).getTime();
+  if (!Number.isFinite(then)) return '--';
+  const diff = Math.floor((Date.now() - then) / 1000);
+  if (diff < 0) return 'just now';
   if (diff < 60) return `${diff}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -572,14 +579,28 @@ async function pollClaudeAnalysis() {
 
 // ─── Status Cards ───────────────────────────────────────────
 
+// Parse a raw model ID (e.g. "claude-opus-4-7", "claude-haiku-4-5-20251001")
+// into a compact display label and family tag for pill coloring.
+function parseModel(id) {
+  if (!id) return { label: '', family: '' };
+  const m = String(id).match(/^claude-(opus|sonnet|haiku)-(\d+)-(\d+)/i);
+  if (!m) return { label: id, family: 'unknown' };
+  const family = m[1].toLowerCase();
+  const title = family.charAt(0).toUpperCase() + family.slice(1);
+  return { label: `${title} ${m[2]}.${m[3]}`, family };
+}
+
 async function renderStatusCards() {
-  const [status, uptime] = await Promise.all([
+  const [status, uptime, models] = await Promise.all([
     fetchJson('/api/status'),
     fetchJson('/api/uptime?days=7'),
+    fetchJson('/api/agents/models').catch(() => []),
   ]);
 
   const uptimeMap = {};
   uptime.forEach(u => uptimeMap[u.agent_name] = u);
+  const modelMap = {};
+  (Array.isArray(models) ? models : []).forEach((m) => { modelMap[m.agent] = m.model; });
 
   const container = document.getElementById('statusCards');
 
@@ -594,6 +615,10 @@ async function renderStatusCards() {
     const uptimePctStr = uptimePct == null ? '--' : uptimePct;
     const statusClass = agent.status || 'unknown';
     const agentKey = normalizeAgentKey(agent.agent_name);
+    const mdl = parseModel(modelMap[agent.agent_name]);
+    const modelPill = mdl.label
+      ? `<span class="card-model family-${mdl.family}" title="${modelMap[agent.agent_name]}">${mdl.label}</span>`
+      : '';
 
     return `
       <div class="status-card ${statusClass}" data-agent-key="${agentKey}">
@@ -609,7 +634,10 @@ async function renderStatusCards() {
         </div>
         <div class="card-meta">
           <span>Uptime (7d): ${uptimePctStr}%</span>
-          <span class="card-lastseen" data-ts="${agent.timestamp}">Last seen: ${timeSince(agent.timestamp)}</span>
+          <div class="card-meta-row">
+            <span class="card-lastseen" data-ts="${agent.timestamp}">Last seen: ${timeSince(agent.timestamp)}</span>
+            ${modelPill}
+          </div>
           <span class="card-pid">${agent.pid ? `PID: ${agent.pid}` : ''}</span>
         </div>
       </div>
