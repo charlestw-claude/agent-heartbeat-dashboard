@@ -152,6 +152,22 @@ header h1 {
   font-variant-numeric: tabular-nums;
 }
 
+/* Activity badge — mirrors ClaudeMonitor's tray badge tiers. */
+.claude-usage-panel .usage-activity {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.claude-usage-panel .usage-activity.level-maxed  { color: #fca5a5; background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.4); }
+.claude-usage-panel .usage-activity.level-peak   { color: #fbbf24; background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); }
+.claude-usage-panel .usage-activity.level-active { color: #6ee7b7; background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4); }
+.claude-usage-panel .usage-activity.level-normal { color: #93c5fd; background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.4); }
+.claude-usage-panel .usage-activity.level-quiet  { color: var(--text-dim); background: var(--surface2); border-color: var(--border); }
+
 .claude-usage-panel .usage-bars {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

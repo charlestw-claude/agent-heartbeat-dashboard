@@ -250,20 +250,43 @@ function bucketLevel(pct) {
   return 'low';
 }
 
-// Fallback labels + sort order. ClaudeMonitor sends labels inline, but when
-// it doesn't (unknown line key, partial payload), we fall back to these.
-const USAGE_LINE_LABELS = {
-  session:           { label: 'Session (5h)',    order: 1 },
-  weekly_all_models: { label: '7 Day · All',     order: 2 },
-  weekly_sonnet:     { label: '7 Day · Sonnet',  order: 3 },
-  weekly_opus:       { label: '7 Day · Opus',    order: 4 },
-  weekly_haiku:      { label: '7 Day · Haiku',   order: 5 },
-};
-
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
+}
+
+// Activity badge level → CSS class. Mirrors ClaudeMonitor's own tiers.
+const ACTIVITY_LEVEL_CLASS = {
+  Maxed: 'maxed',
+  Peak: 'peak',
+  Active: 'active',
+  Normal: 'normal',
+  Quiet: 'quiet',
+  Hidden: 'hidden',
+};
+
+// Render a single percent-based usage bar.
+function renderPctRow(label, usedPct, resetText, resetAt, suffix) {
+  const pct = Math.min(100, Math.max(0, Number(usedPct) || 0));
+  const level = bucketLevel(pct);
+  const resetBits = [];
+  if (resetAt) resetBits.push(`resets in ${timeUntil(resetAt)}`);
+  else if (resetText) resetBits.push(escapeHtml(resetText));
+  const reset = resetBits.length ? `<span class="usage-reset">${resetBits.join(' · ')}</span>` : '';
+  const tail = suffix ? ` <span class="usage-raw">${escapeHtml(suffix)}</span>` : '';
+  return `
+    <div class="usage-row">
+      <div class="usage-row-header">
+        <span class="usage-label">${escapeHtml(label)}${tail}</span>
+        <span class="usage-value">${pct}%</span>
+      </div>
+      <div class="usage-bar">
+        <div class="usage-bar-fill level-${level}" style="width: ${pct}%"></div>
+      </div>
+      ${reset}
+    </div>
+  `;
 }
 
 function renderClaudeUsage(snapshot) {
@@ -271,10 +294,11 @@ function renderClaudeUsage(snapshot) {
   const barsEl = document.getElementById('claudeUsageBars');
   const planEl = document.getElementById('claudeUsagePlan');
   const metaEl = document.getElementById('claudeUsageMeta');
+  const activityEl = document.getElementById('claudeUsageActivity');
   if (!panel || !barsEl) return;
 
-  // Nothing ever ingested (or the snapshot aged past MAX_PAYLOAD_AGE_MS and
-  // was cleared server-side). Keep the panel hidden so users without
+  // Nothing polled yet (or the snapshot aged past MAX_PAYLOAD_AGE_MS and was
+  // cleared server-side). Keep the panel hidden so users without
   // ClaudeMonitor running don't see an empty widget.
   if (!snapshot || !snapshot.payload) {
     panel.hidden = true;
@@ -282,16 +306,27 @@ function renderClaudeUsage(snapshot) {
   }
   panel.hidden = false;
 
-  const { payload, receivedAt, stale } = snapshot;
+  const { payload, receivedAt, stale, lastError } = snapshot;
 
-  planEl.textContent = payload.subscriptionType || '';
+  planEl.textContent = payload.plan || '';
   const metaParts = [];
   if (receivedAt) metaParts.push(`Updated ${timeSince(receivedAt.replace(/Z$/, ''))}`);
-  if (stale) metaParts.push('⚠ stale');
+  if (stale) metaParts.push(lastError ? `⚠ stale (${lastError})` : '⚠ stale');
   metaEl.textContent = metaParts.join(' · ');
 
   panel.classList.toggle('stale', !!stale);
   panel.classList.remove('errored');
+
+  if (activityEl) {
+    if (payload.activity && payload.activity.level && payload.activity.level !== 'Hidden') {
+      const lvl = ACTIVITY_LEVEL_CLASS[payload.activity.level] || 'normal';
+      activityEl.className = `usage-activity level-${lvl}`;
+      activityEl.textContent = payload.activity.label || payload.activity.level;
+      activityEl.hidden = false;
+    } else {
+      activityEl.hidden = true;
+    }
+  }
 
   if (payload.isLoggedIn === false) {
     barsEl.innerHTML = `<div class="usage-error">ClaudeMonitor 未登入 claude.ai — 請開啟 ClaudeMonitor 完成登入</div>`;
@@ -299,50 +334,40 @@ function renderClaudeUsage(snapshot) {
     return;
   }
 
-  if (payload.error) {
-    barsEl.innerHTML = `<div class="usage-error">ClaudeMonitor: ${escapeHtml(payload.error)}</div>`;
-    panel.classList.add('errored');
-    return;
+  const rows = [];
+
+  if (payload.session) {
+    rows.push(renderPctRow('Session (5h)', payload.session.usedPct, payload.session.resetText, payload.session.resetAt));
+  }
+  if (payload.weeklyAllModels) {
+    rows.push(renderPctRow('7 Day · All', payload.weeklyAllModels.usedPct, payload.weeklyAllModels.resetText, payload.weeklyAllModels.resetAt));
+  }
+  if (payload.weeklySonnet) {
+    rows.push(renderPctRow('7 Day · Sonnet', payload.weeklySonnet.usedPct, payload.weeklySonnet.resetText, payload.weeklySonnet.resetAt));
+  }
+  if (payload.weeklyOpus) {
+    rows.push(renderPctRow('7 Day · Opus', payload.weeklyOpus.usedPct, payload.weeklyOpus.resetText, payload.weeklyOpus.resetAt));
+  }
+  if (payload.weeklyDesign) {
+    rows.push(renderPctRow('Claude Design', payload.weeklyDesign.usedPct, payload.weeklyDesign.resetText, payload.weeklyDesign.resetAt));
+  }
+  if (payload.dailyRoutineRuns) {
+    const r = payload.dailyRoutineRuns;
+    const suffix = (r.used != null && r.total != null) ? `(${r.used} / ${r.total})` : '';
+    rows.push(renderPctRow('Daily Routine', r.usedPct, r.resetText, r.resetAt, suffix));
+  }
+  if (payload.extraUsage && payload.extraUsage.enabled) {
+    const e = payload.extraUsage;
+    const suffix = e.spentText ? `(${e.spentText})` : '';
+    rows.push(renderPctRow('Extra Usage', e.spentPct, e.resetText, e.resetAt, suffix));
   }
 
-  const lines = Array.isArray(payload.lines) ? payload.lines : [];
-  if (lines.length === 0) {
+  if (rows.length === 0) {
     barsEl.innerHTML = `<div class="usage-empty">尚無 usage 資料</div>`;
     return;
   }
 
-  const sorted = [...lines].sort((a, b) => {
-    const ao = (USAGE_LINE_LABELS[a.key] && USAGE_LINE_LABELS[a.key].order) || 999;
-    const bo = (USAGE_LINE_LABELS[b.key] && USAGE_LINE_LABELS[b.key].order) || 999;
-    return ao - bo;
-  });
-
-  barsEl.innerHTML = sorted.map((line) => {
-    const label = line.label
-      || (USAGE_LINE_LABELS[line.key] && USAGE_LINE_LABELS[line.key].label)
-      || line.key
-      || '—';
-    const pct = Math.min(100, Math.max(0, Number(line.usedPct) || 0));
-    const level = bucketLevel(pct);
-    const reset = line.resetsAt
-      ? `<span class="usage-reset">resets in ${timeUntil(line.resetsAt)}</span>`
-      : '';
-    const raw = (line.used != null && line.total != null && line.unit)
-      ? ` <span class="usage-raw">(${escapeHtml(line.used)} / ${escapeHtml(line.total)} ${escapeHtml(line.unit)})</span>`
-      : '';
-    return `
-      <div class="usage-row">
-        <div class="usage-row-header">
-          <span class="usage-label">${escapeHtml(label)}${raw}</span>
-          <span class="usage-value">${pct}%</span>
-        </div>
-        <div class="usage-bar">
-          <div class="usage-bar-fill level-${level}" style="width: ${pct}%"></div>
-        </div>
-        ${reset}
-      </div>
-    `;
-  }).join('');
+  barsEl.innerHTML = rows.join('');
 }
 
 async function pollClaudeUsage() {

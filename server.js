@@ -290,25 +290,9 @@ app.get('/api/disk/caches', (req, res) => {
   res.json(diskCaches.getInfo({ force }));
 });
 
-// GET /api/claude/usage — latest snapshot POSTed by ClaudeMonitor.
+// GET /api/claude/usage — latest snapshot polled from ClaudeMonitor's local API.
 app.get('/api/claude/usage', (req, res) => {
   res.json(claudeUsage.getSnapshot());
-});
-
-// POST /api/claude/usage/ingest — ClaudeMonitor pushes a parsed snapshot here
-// after scraping claude.ai's usage page. Loopback-only: this bypasses any
-// auth and the dashboard's LAN firewall is our only other line of defence.
-app.post('/api/claude/usage/ingest', (req, res) => {
-  const ip = req.ip || (req.connection && req.connection.remoteAddress) || '';
-  const loopback = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
-  if (!loopback) return res.status(403).json({ error: 'loopback_only' });
-
-  try {
-    claudeUsage.ingest(req.body);
-  } catch (err) {
-    return res.status(400).json({ error: err.message });
-  }
-  res.json({ ok: true });
 });
 
 // GET /api/metrics/1min?hours=24
@@ -352,11 +336,13 @@ server.listen(PORT, '0.0.0.0', () => {
   collector.start();
   rollup.start();
   archive.start();
+  claudeUsage.start();
 });
 
 process.on('SIGTERM', () => {
   collector.stop();
   rollup.stop();
   archive.stop();
+  claudeUsage.stop();
   server.close(() => process.exit(0));
 });
