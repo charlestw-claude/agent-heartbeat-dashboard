@@ -53,25 +53,70 @@
       <div class="usage-stats" id="claudeUsageStats" hidden>
         <div class="usage-stats-title">Statistics <span class="usage-chart-sub" id="claudeStatsNote"></span></div>
         <div class="usage-stats-grid">
-          <div class="usage-stat" id="statSession">
-            <div class="usage-stat-label">SESSION peak / avg</div>
-            <div class="usage-stat-value" id="statSessionValue">--</div>
-            <div class="usage-stat-sub" id="statSessionSub"></div>
+          <div class="usage-stat usage-stat-ring" id="statSession">
+            <div class="usage-stat-label">SESSION</div>
+            <div class="usage-stat-ring-row">
+              <div class="usage-stat-ring-chart" id="statSessionRing"></div>
+              <div class="usage-stat-ring-legend">
+                <div><span class="dot peak"></span>Peak <span id="statSessionPeak">--</span></div>
+                <div><span class="dot active"></span>Avg <span id="statSessionAvg">--</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="usage-stat usage-stat-ring" id="statWeek">
+            <div class="usage-stat-label">WEEK (ALL MODELS)</div>
+            <div class="usage-stat-ring-row">
+              <div class="usage-stat-ring-chart" id="statWeekRing"></div>
+              <div class="usage-stat-ring-legend">
+                <div><span class="dot peak"></span>Peak <span id="statWeekPeak">--</span></div>
+                <div><span class="dot active"></span>Avg <span id="statWeekAvg">--</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="usage-stat" id="statStreak">
+            <div class="usage-stat-label">ACTIVE-DAY STREAK</div>
+            <div class="usage-stat-value" id="statStreakValue">--</div>
+            <div class="usage-stat-sub" id="statStreakSub"></div>
+            <div class="usage-stat-dots" id="statStreakDots"></div>
+          </div>
+          <div class="usage-stat" id="statMaxed">
+            <div class="usage-stat-label">LAST 100% (MAXED OUT)</div>
+            <div class="usage-stat-value usage-stat-value-sm" id="statMaxedValue">--</div>
+            <div class="usage-stat-sub" id="statMaxedSub"></div>
+            <div class="usage-stat-timeline" id="statMaxedTimeline" hidden>
+              <span class="usage-stat-timeline-end">30d ago</span>
+              <div class="usage-stat-timeline-bar"><div class="usage-stat-timeline-marker" id="statMaxedMarker"></div></div>
+              <span class="usage-stat-timeline-end">today</span>
+            </div>
           </div>
           <div class="usage-stat" id="statRate">
             <div class="usage-stat-label">LIVE RATE</div>
-            <div class="usage-stat-value" id="statRateValue">--</div>
-            <div class="usage-stat-sub" id="statRateSub"></div>
+            <div class="usage-stat-pair">
+              <div class="usage-stat-pair-row"><span class="usage-stat-pair-label">now</span><div class="usage-stat-pair-bar"><div id="statRateNowFill" class="fill rate-now"></div></div><span class="usage-stat-pair-value" id="statRateNow">--</span></div>
+              <div class="usage-stat-pair-row"><span class="usage-stat-pair-label">7d avg</span><div class="usage-stat-pair-bar"><div id="statRateAvgFill" class="fill rate-avg"></div></div><span class="usage-stat-pair-value" id="statRateAvg">--</span></div>
+            </div>
           </div>
           <div class="usage-stat" id="statEta">
-            <div class="usage-stat-label">ETA to 100%</div>
+            <div class="usage-stat-label">ETA TO 100%</div>
             <div class="usage-stat-value" id="statEtaValue">--</div>
             <div class="usage-stat-sub" id="statEtaSub"></div>
+            <div class="usage-stat-progress"><div id="statEtaFill" class="fill"></div></div>
           </div>
-          <div class="usage-stat" id="statStreak">
-            <div class="usage-stat-label">STREAK</div>
-            <div class="usage-stat-value" id="statStreakValue">--</div>
-            <div class="usage-stat-dots" id="statStreakDots"></div>
+          <div class="usage-stat" id="statHours">
+            <div class="usage-stat-label">ACTIVE HOURS</div>
+            <div class="usage-stat-value" id="statHoursValue">--</div>
+            <div class="usage-stat-pair">
+              <div class="usage-stat-pair-row"><span class="usage-stat-pair-label">today</span><div class="usage-stat-pair-bar"><div id="statHoursTodayFill" class="fill rate-now"></div></div><span class="usage-stat-pair-value" id="statHoursToday">--</span></div>
+              <div class="usage-stat-pair-row"><span class="usage-stat-pair-label">7d avg</span><div class="usage-stat-pair-bar"><div id="statHoursAvgFill" class="fill rate-avg"></div></div><span class="usage-stat-pair-value" id="statHoursAvg">--</span></div>
+            </div>
+          </div>
+          <div class="usage-stat usage-stat-wow" id="statWow">
+            <div class="usage-stat-label">WEEK OVER WEEK <span class="usage-stat-legend"><span class="dot wow-this"></span>this <span class="dot wow-last"></span>last</span></div>
+            <div class="usage-stat-wow-rows">
+              <div class="usage-stat-wow-row"><span class="lab">Active hrs</span><div class="bars"><div class="bar this" id="wowActiveThis"></div><div class="bar last" id="wowActiveLast"></div></div><span class="num" id="wowActiveText">--</span></div>
+              <div class="usage-stat-wow-row"><span class="lab">Peak sess.</span><div class="bars"><div class="bar this" id="wowPeakThis"></div><div class="bar last" id="wowPeakLast"></div></div><span class="num" id="wowPeakText">--</span></div>
+              <div class="usage-stat-wow-row"><span class="lab">Mean sess%</span><div class="bars"><div class="bar this" id="wowMeanThis"></div><div class="bar last" id="wowMeanLast"></div></div><span class="num" id="wowMeanText">--</span></div>
+            </div>
           </div>
         </div>
       </div>

@@ -617,6 +617,58 @@ function formatHours(h) {
   return `${hh}h ${mm}m`;
 }
 
+// Cache ECharts instances for the two ring charts so resize() can hit them
+// without re-init.
+let statSessionRingInstance = null;
+let statWeekRingInstance = null;
+
+function renderRing(id, instanceKey, peakPct, avgPct) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  let inst = window[instanceKey];
+  if (!inst) {
+    inst = echarts.init(el, null, { renderer: 'canvas' });
+    window[instanceKey] = inst;
+  }
+  // Two stacked rings — peak (outer, red) wraps avg (inner, orange). Both
+  // use thin radii (`['82%','92%']` / `['68%','78%']`) so the chart reads
+  // as concentric pencil-thin arcs rather than chunky donuts.
+  const peakArc = peakPct != null ? Math.max(0, Math.min(100, peakPct)) : 0;
+  const avgArc  = avgPct  != null ? Math.max(0, Math.min(100, avgPct))  : 0;
+  inst.setOption({
+    backgroundColor: 'transparent',
+    series: [
+      {
+        type: 'pie',
+        radius: ['82%', '92%'],
+        avoidLabelOverlap: false,
+        silent: true,
+        label: { show: false },
+        labelLine: { show: false },
+        startAngle: 90,
+        data: [
+          { value: peakArc, itemStyle: { color: '#fca5a5' } },
+          { value: 100 - peakArc, itemStyle: { color: 'rgba(255,255,255,0.06)' } },
+        ],
+      },
+      {
+        type: 'pie',
+        radius: ['68%', '78%'],
+        avoidLabelOverlap: false,
+        silent: true,
+        label: { show: false },
+        labelLine: { show: false },
+        startAngle: 90,
+        data: [
+          { value: avgArc, itemStyle: { color: '#fbbf24' } },
+          { value: 100 - avgArc, itemStyle: { color: 'rgba(255,255,255,0.06)' } },
+        ],
+      },
+    ],
+  }, true);
+  return inst;
+}
+
 function renderClaudeStats(snapshot) {
   const wrap = document.getElementById('claudeUsageStats');
   if (!wrap) return;
@@ -627,61 +679,125 @@ function renderClaudeStats(snapshot) {
 
   const noteEl = document.getElementById('claudeStatsNote');
   if (noteEl) {
-    const lookback = payload.lookbackDays != null ? `rolling ${payload.lookbackDays} days` : 'rolling window';
+    const lookback = payload.lookbackDays != null ? `last ${payload.lookbackDays} days` : 'rolling window';
     const valid = payload.validSessions != null && payload.totalSessions != null
       ? ` · ${payload.validSessions}/${payload.totalSessions} valid sessions`
       : '';
     noteEl.textContent = `· ${lookback}${valid}`;
   }
 
-  // SESSION peak / avg
+  // SESSION ring
   const session = payload.session || {};
-  const peak = session.peakPct != null ? Math.round(session.peakPct) : null;
-  const avg = session.avgPct != null ? Math.round(session.avgPct) : null;
-  document.getElementById('statSessionValue').textContent =
-    peak != null && avg != null ? `${peak}% / ${avg}%` : '--';
-  document.getElementById('statSessionSub').textContent =
-    session.sampleCount != null ? `n=${session.sampleCount}` : '';
+  document.getElementById('statSessionPeak').textContent =
+    session.peakPct != null ? `${session.peakPct.toFixed(1)}%` : '--';
+  document.getElementById('statSessionAvg').textContent =
+    session.avgPct != null ? `${session.avgPct.toFixed(1)}%` : '--';
+  statSessionRingInstance = renderRing('statSessionRing', 'statSessionRingInstance', session.peakPct, session.avgPct);
 
-  // LIVE RATE
-  const rate = payload.rate || {};
-  const rateValueEl = document.getElementById('statRateValue');
-  const rateSubEl = document.getElementById('statRateSub');
-  if (rate.hasNow && rate.nowPctPerHour != null) {
-    rateValueEl.textContent = `${rate.nowPctPerHour.toFixed(1)} %/h`;
+  // WEEK ring
+  const week = payload.week || {};
+  document.getElementById('statWeekPeak').textContent =
+    week.peakPct != null ? `${week.peakPct.toFixed(1)}%` : '--';
+  document.getElementById('statWeekAvg').textContent =
+    week.avgPct != null ? `${week.avgPct.toFixed(1)}%` : '--';
+  statWeekRingInstance = renderRing('statWeekRing', 'statWeekRingInstance', week.peakPct, week.avgPct);
+
+  // ACTIVE-DAY STREAK
+  const streak = payload.streak || {};
+  document.getElementById('statStreakValue').textContent =
+    streak.current != null ? `${streak.current} days in a row` : '--';
+  document.getElementById('statStreakSub').textContent =
+    streak.best != null ? `Best run: ${streak.best} days · last 7 days ↓` : '';
+  // last7Active[0] = oldest (6 days ago), last7Active[6] = today.
+  // Render under each pip: a single-letter weekday derived from now - (6 - i).
+  const dotsEl = document.getElementById('statStreakDots');
+  const last7 = Array.isArray(streak.last7Active) ? streak.last7Active : [];
+  const today = new Date();
+  const wkLetters = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  dotsEl.innerHTML = last7.map((on, i) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (6 - i));
+    const isToday = i === last7.length - 1;
+    return `<span class="usage-stat-dot${on ? ' active' : ''}${isToday ? ' today' : ''}"><span class="pip"></span><span>${wkLetters[d.getDay()]}</span></span>`;
+  }).join('');
+
+  // LAST 100% (MAXED OUT)
+  const lastMaxed = payload.lastMaxed || {};
+  const lookbackDays = payload.lookbackDays || 30;
+  const maxedValEl = document.getElementById('statMaxedValue');
+  const maxedSubEl = document.getElementById('statMaxedSub');
+  const maxedTL = document.getElementById('statMaxedTimeline');
+  const maxedMarker = document.getElementById('statMaxedMarker');
+  if (lastMaxed.found) {
+    maxedValEl.innerHTML = `<span style="color:#fca5a5;">●</span> ${lastMaxed.daysAgo.toFixed(1)}d ago`;
+    maxedSubEl.textContent = `Last session that hit 100% within the last ${lookbackDays} days.`;
+    maxedTL.hidden = false;
+    // Marker: 0 days ago = 100% (right), lookbackDays ago = 0% (left).
+    const pct = Math.max(0, Math.min(100, 100 - (lastMaxed.daysAgo / lookbackDays) * 100));
+    maxedMarker.style.left = `${pct}%`;
   } else {
-    rateValueEl.textContent = '—';
+    maxedValEl.innerHTML = `<span style="color:#6ee7b7;">✓</span> never maxed in window`;
+    maxedSubEl.textContent = `No session reached 100% during the last ${lookbackDays}d.`;
+    maxedTL.hidden = true;
   }
-  rateSubEl.textContent = rate.sevenDayAvgPctPerHour != null
-    ? `7d avg ${rate.sevenDayAvgPctPerHour.toFixed(1)} %/h`
-    : '';
 
-  // ETA to 100%
+  // LIVE RATE — paired bars scaled against the larger of (now, 7d-avg)
+  const rate = payload.rate || {};
+  const now = rate.hasNow && rate.nowPctPerHour != null ? rate.nowPctPerHour : 0;
+  const avg = rate.sevenDayAvgPctPerHour != null ? rate.sevenDayAvgPctPerHour : 0;
+  const rateMax = Math.max(now, avg, 0.01);
+  document.getElementById('statRateNow').textContent = rate.hasNow ? `${now.toFixed(1)} %/h` : '—';
+  document.getElementById('statRateAvg').textContent = avg ? `${avg.toFixed(1)} %/h` : '--';
+  document.getElementById('statRateNowFill').style.width = `${(now / rateMax) * 100}%`;
+  document.getElementById('statRateAvgFill').style.width = `${(avg / rateMax) * 100}%`;
+
+  // ETA TO 100%
   const eta = payload.eta || {};
   const etaValueEl = document.getElementById('statEtaValue');
   const etaSubEl = document.getElementById('statEtaSub');
+  const etaFillEl = document.getElementById('statEtaFill');
   if (eta.hasEstimate && eta.hoursRemaining != null) {
     etaValueEl.textContent = formatHours(eta.hoursRemaining);
     etaSubEl.textContent = eta.beforeReset === false
-      ? "won't max this session"
+      ? "after reset · won't hit 100% this session"
       : 'before reset';
+    // Cap the bar at 24h so anything beyond a day reads as "very long".
+    const pct = Math.max(0, Math.min(100, 100 - (eta.hoursRemaining / 24) * 100));
+    etaFillEl.style.width = `${pct}%`;
   } else {
     etaValueEl.textContent = '—';
     etaSubEl.textContent = eta.note || 'not enough data';
+    etaFillEl.style.width = '0%';
   }
 
-  // STREAK + last 7 days dots (index 0 = oldest, 6 = today)
-  const streak = payload.streak || {};
-  document.getElementById('statStreakValue').textContent =
-    streak.current != null ? `${streak.current}d` : '--';
-  const dotsEl = document.getElementById('statStreakDots');
-  const last7 = Array.isArray(streak.last7Active) ? streak.last7Active : [];
-  // Show "best N" inline-ish via the dot row title rather than a separate sub
-  // line — keeps the card height matching the others.
-  dotsEl.title = streak.best != null ? `Best streak: ${streak.best} days` : '';
-  dotsEl.innerHTML = last7
-    .map((on) => `<span class="usage-stat-dot${on ? ' active' : ''}"></span>`)
-    .join('');
+  // ACTIVE HOURS
+  const ah = payload.activeHours || {};
+  const ahNow = ah.today != null ? ah.today : 0;
+  const ahAvg = ah.sevenDayAvg != null ? ah.sevenDayAvg : 0;
+  const ahMax = Math.max(ahNow, ahAvg, 0.01);
+  document.getElementById('statHoursValue').textContent =
+    ah.today != null ? `${ah.today} hours today` : '--';
+  document.getElementById('statHoursToday').textContent =
+    ah.today != null ? `${ahNow.toFixed(1)}h` : '--';
+  document.getElementById('statHoursAvg').textContent =
+    ah.sevenDayAvg != null ? `${ahAvg.toFixed(1)}h` : '--';
+  document.getElementById('statHoursTodayFill').style.width = `${(ahNow / ahMax) * 100}%`;
+  document.getElementById('statHoursAvgFill').style.width = `${(ahAvg / ahMax) * 100}%`;
+
+  // WEEK OVER WEEK
+  const wow = payload.weekOverWeek || {};
+  const setWowRow = (thisId, lastId, textId, valThis, valLast, fmt) => {
+    const max = Math.max(valThis, valLast, 0.01);
+    document.getElementById(thisId).style.width = `${(valThis / max) * 100}%`;
+    document.getElementById(lastId).style.width = `${(valLast / max) * 100}%`;
+    document.getElementById(textId).textContent = `${fmt(valThis)} vs ${fmt(valLast)}`;
+  };
+  setWowRow('wowActiveThis', 'wowActiveLast', 'wowActiveText',
+    wow.activeHoursThisWeek || 0, wow.activeHoursLastWeek || 0, (v) => `${v}h`);
+  setWowRow('wowPeakThis', 'wowPeakLast', 'wowPeakText',
+    wow.peakSessionsThisWeek || 0, wow.peakSessionsLastWeek || 0, (v) => `${v}`);
+  setWowRow('wowMeanThis', 'wowMeanLast', 'wowMeanText',
+    wow.meanSessionPctThisWeek || 0, wow.meanSessionPctLastWeek || 0, (v) => v.toFixed(1));
 }
 
 async function pollClaudeStats() {
@@ -1181,4 +1297,6 @@ setInterval(pollClaudeStats, 5 * 60_000);
 window.addEventListener('resize', () => {
   if (claudeUsage24hInstance) claudeUsage24hInstance.resize();
   if (claudeUsageHeatmapInstance) claudeUsageHeatmapInstance.resize();
+  if (statSessionRingInstance) statSessionRingInstance.resize();
+  if (statWeekRingInstance) statWeekRingInstance.resize();
 });
