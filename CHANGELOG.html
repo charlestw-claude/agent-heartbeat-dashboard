@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Changelog — agent-heartbeat-dashboard</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif; max-width: 880px; margin: 2rem auto; padding: 0 1.5rem; color: #1f2937; line-height: 1.6; }
+  h1 { border-bottom: 2px solid #0ea5e9; padding-bottom: 0.4rem; }
+  h2 { margin-top: 2rem; color: #0369a1; }
+  h2 a { color: inherit; text-decoration: none; }
+  h3 { margin-top: 1.2rem; color: #334155; font-size: 1.05rem; }
+  code { background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.92em; }
+  ul { padding-left: 1.4rem; }
+  li { margin: 0.3rem 0; }
+  blockquote { border-left: 3px solid #cbd5e1; margin: 1rem 0; padding: 0.4rem 0.9rem; color: #475569; background: #f8fafc; }
+  a { color: #0ea5e9; }
+  hr { border: none; border-top: 1px solid #e2e8f0; margin: 2rem 0; }
+</style>
+</head>
+<body>
+
+<h1>Changelog</h1>
+
+<p>All notable changes to this project are documented in this file.</p>
+
+<p>The format follows <a href="https://keepachangelog.com/">Keep a Changelog</a> and this project adheres to <a href="https://semver.org/">Semantic Versioning</a>.</p>
+
+<blockquote>CHANGELOG 自 v1.6.0 起算，舊版資訊請參考 git tag 與 commit 歷史。</blockquote>
+
+<h2 id="v1-6-0"><a href="#v1-6-0">[1.6.0] — 2026-04-25</a></h2>
+
+<h3>Added</h3>
+<ul>
+  <li><strong>Claude Subscription panel</strong>：整合 ClaudeMonitor 本機 API（<code>127.0.0.1:6736</code>），顯示訂閱用量、5 小時 session、週配額、串流燒率與 ETA。</li>
+  <li><strong>ClaudeMonitor v2.5.0 <code>/v1/stats</code> 對接</strong>：八張統計卡（SESSION / WEEK / STREAK / LAST MAXED / RATE / ETA / HOURS / WoW），加上 Session reset hour 直方圖與 24 小時時段強度分布。</li>
+  <li><strong>Daily Routine 7×24 熱力圖</strong>：依星期一為首列、星期日為末列排序，並顯示「Resets daily」說明。</li>
+  <li><strong>Agent 模型版本膠囊</strong>：每張 agent 卡片顯示當前 Claude 模型（如 <code>Opus 4.7</code>、<code>Sonnet 4.6</code>）。</li>
+  <li><strong>Stats 輪詢層</strong>：<code>metrics/claude-usage.js</code> 新增 <code>getStats()</code> 與對應 polling state，前端 <code>GET /api/claude/stats</code> 對應路由。</li>
+  <li><strong><code>renderRing()</code> ECharts 工具</strong>：薄環雙軌（Peak / Avg）視覺，供 SESSION 與 WEEK 卡片使用。</li>
+</ul>
+
+<h3>Changed</h3>
+<ul>
+  <li><strong>手機版狀態卡片排版</strong>：第一列保留標題與 Online 膠囊靠右，其餘膠囊（CPU/RAM/Model）下移至第二列靠左，避免窄寬度溢出。</li>
+  <li><strong>Daily Routine X 軸標籤</strong>：依容器寬度自動調整顯示密度，避免文字截斷。</li>
+  <li><strong>Subscription 區塊 header</strong>：膠囊靠左貼齊標題，僅 <code>Updated Xm ago</code> 靠右。</li>
+</ul>
+
+<h3>Fixed</h3>
+<ul>
+  <li><strong>24 小時柱狀圖 markLine 標籤</strong>：<code>position: 'insideEndTop'</code> + 右側 padding，避免 Peak / Avg 文字超出 grid。</li>
+  <li><strong>手機版膠囊溢位</strong>：以 <code>@media (max-width: 540px)</code> viewport query 取代 container query，修正 Safari 上的相容性問題。</li>
+</ul>
+
+</body>
+</html>
