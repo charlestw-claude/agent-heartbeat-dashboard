@@ -844,6 +844,43 @@ function renderClaudeStats(snapshot) {
       }, true);
     }
   }
+
+  // Time-of-day breakdown — single stacked bar made of N segments. Each
+  // segment colors against the tier palette by per-hour intensity
+  // (sumDelta / hours-in-bucket) relative to the mean across buckets,
+  // so peak hours of the day pop red, dead time fades to blue. Matches
+  // the colour vocabulary the rest of the panel already uses.
+  const buckets = Array.isArray(payload.timeBuckets) ? payload.timeBuckets : [];
+  const todBar = document.getElementById('statTodBar');
+  const todLabels = document.getElementById('statTodLabels');
+  if (todBar && todLabels && buckets.length > 0) {
+    const intensities = buckets.map((b) => {
+      const span = Math.max(1, (b.toHour || 0) - (b.fromHour || 0));
+      return (b.sumDelta || 0) / span;
+    });
+    const mean = intensities.reduce((s, v) => s + v, 0) / intensities.length || 0.0001;
+    const tierColorFor = (intensity) => {
+      if (intensity >= mean * 2) return TIER_COLORS.peak;
+      if (intensity >= mean * 1.2) return TIER_COLORS.active;
+      if (intensity >= mean * 0.5) return TIER_COLORS.normal;
+      if (intensity > 0) return TIER_COLORS.quiet;
+      return TIER_COLORS.noData;
+    };
+    const fmtHr = (h) => String(h).padStart(2, '0');
+    todBar.innerHTML = buckets.map((b, i) => {
+      const share = Math.max(0.01, b.sharePct || 0);
+      const col = tierColorFor(intensities[i]);
+      // Inline width via flex: <segment.share>% of the row.
+      return `<div class="usage-stats-tod-seg" style="flex: ${share} ${share} 0%; background: ${col};" title="${fmtHr(b.fromHour)}-${fmtHr(b.toHour)} · ${b.sharePct.toFixed(1)}%">${share >= 8 ? `${Math.round(b.sharePct)}%` : ''}</div>`;
+    }).join('');
+    todLabels.innerHTML = buckets.map((b, i) => {
+      const col = tierColorFor(intensities[i]);
+      return `<span><span class="swatch" style="background:${col};"></span>${fmtHr(b.fromHour)}–${fmtHr(b.toHour)} ${b.sharePct.toFixed(0)}%</span>`;
+    }).join('');
+  } else if (todBar) {
+    todBar.innerHTML = '';
+    todLabels.innerHTML = '';
+  }
 }
 
 async function pollClaudeStats() {

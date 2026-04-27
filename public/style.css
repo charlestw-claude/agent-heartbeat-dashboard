@@ -574,6 +574,55 @@ header h1 {
   height: 110px;
 }
 
+/* Time-of-day stacked bar — single horizontal row of N coloured segments
+   (segment count = number of buckets configured in ClaudeMonitor). The
+   labels row beneath lists each bucket as "HH-HH NN%". */
+.claude-usage-panel .usage-stats-tod {
+  display: flex;
+  width: 100%;
+  height: 22px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.claude-usage-panel .usage-stats-tod-seg {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  color: rgba(0, 0, 0, 0.65);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  border-right: 1px solid rgba(0, 0, 0, 0.15);
+  transition: flex 0.4s ease;
+}
+.claude-usage-panel .usage-stats-tod-seg:last-child {
+  border-right: none;
+}
+.claude-usage-panel .usage-stats-tod-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.claude-usage-panel .usage-stats-tod-labels span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.claude-usage-panel .usage-stats-tod-labels .swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
 .claude-usage-panel.errored {
   border-color: rgba(239, 68, 68, 0.35);
 }
