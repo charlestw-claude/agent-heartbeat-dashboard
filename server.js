@@ -9,6 +9,7 @@ const collector = require('./metrics/collector');
 const rollup = require('./metrics/rollup');
 const archive = require('./metrics/archive');
 const diskCaches = require('./metrics/disk-caches');
+const claudeUsage = require('./metrics/claude-usage');
 const agentModels = require('./metrics/agent-models');
 const wsHub = require('./metrics/ws');
 
@@ -298,6 +299,21 @@ app.get('/api/disk/caches', (req, res) => {
   res.json(diskCaches.getInfo({ force }));
 });
 
+// GET /api/claude/usage — latest snapshot polled from ClaudeMonitor's local API.
+app.get('/api/claude/usage', (req, res) => {
+  res.json(claudeUsage.getSnapshot());
+});
+
+// GET /api/claude/analysis — peak-analysis matrix (24h avg + 7×24 DoW).
+app.get('/api/claude/analysis', (req, res) => {
+  res.json(claudeUsage.getAnalysis());
+});
+
+// GET /api/claude/stats — rolling-window summary stats from ClaudeMonitor v2.5.0.
+app.get('/api/claude/stats', (req, res) => {
+  res.json(claudeUsage.getStats());
+});
+
 // GET /api/metrics/1min?hours=24
 app.get('/api/metrics/1min', (req, res) => {
   const hours = Math.min(parseInt(req.query.hours) || 24, 24 * 30);
@@ -339,11 +355,13 @@ server.listen(PORT, '0.0.0.0', () => {
   collector.start();
   rollup.start();
   archive.start();
+  claudeUsage.start();
 });
 
 process.on('SIGTERM', () => {
   collector.stop();
   rollup.stop();
   archive.stop();
+  claudeUsage.stop();
   server.close(() => process.exit(0));
 });

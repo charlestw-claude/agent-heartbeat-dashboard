@@ -202,8 +202,9 @@ function applyHeartbeatsPush(data) {
     const pidEl = card.querySelector('.card-pid');
     if (pidEl) pidEl.textContent = a.pid ? `PID: ${a.pid}` : '';
 
-    const signal = card.querySelector('.card-signal');
-    if (signal) signal.setAttribute('data-status-class', a.status);
+    card.querySelectorAll('.card-signal').forEach((s) => {
+      s.setAttribute('data-status-class', a.status);
+    });
   }
   if (anyStatusChanged) {
     applySignalsToCards(lastAgentSignals);
@@ -230,6 +231,664 @@ async function pollAgentActivity() {
     if (!r.ok) return;
     const data = await r.json();
     applyAgentsBreakdown(data);
+  } catch {}
+}
+
+// ─── Claude Subscription Usage ──────────────────────────────
+
+// Human-readable countdown to an ISO timestamp, compact form (1d 3h / 42m).
+function timeUntil(iso) {
+  const target = new Date(iso).getTime();
+  const diff = target - Date.now();
+  if (!Number.isFinite(diff) || diff <= 0) return 'resetting…';
+  const sec = Math.floor(diff / 1000);
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${sec}s`;
+}
+
+function bucketLevel(pct) {
+  if (pct >= 90) return 'danger';
+  if (pct >= 75) return 'high';
+  if (pct >= 40) return 'mid';
+  return 'low';
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+// Activity badge level → CSS class. Mirrors ClaudeMonitor's own tiers.
+const ACTIVITY_LEVEL_CLASS = {
+  Maxed: 'maxed',
+  Peak: 'peak',
+  Active: 'active',
+  Normal: 'normal',
+  Quiet: 'quiet',
+  Hidden: 'hidden',
+};
+
+// Render a single percent-based usage bar.
+function renderPctRow(label, usedPct, resetText, resetAt, suffix) {
+  const pct = Math.min(100, Math.max(0, Number(usedPct) || 0));
+  const level = bucketLevel(pct);
+  const resetBits = [];
+  if (resetAt) resetBits.push(`resets in ${timeUntil(resetAt)}`);
+  else if (resetText) resetBits.push(escapeHtml(resetText));
+  const reset = resetBits.length ? `<span class="usage-reset">${resetBits.join(' · ')}</span>` : '';
+  const tail = suffix ? ` <span class="usage-raw">${escapeHtml(suffix)}</span>` : '';
+  return `
+    <div class="usage-row">
+      <div class="usage-row-header">
+        <span class="usage-label">${escapeHtml(label)}${tail}</span>
+        <span class="usage-value">${pct}%</span>
+      </div>
+      <div class="usage-bar">
+        <div class="usage-bar-fill level-${level}" style="width: ${pct}%"></div>
+      </div>
+      ${reset}
+    </div>
+  `;
+}
+
+function renderClaudeUsage(snapshot) {
+  const panel = document.getElementById('claudeUsagePanel');
+  const barsEl = document.getElementById('claudeUsageBars');
+  const planEl = document.getElementById('claudeUsagePlan');
+  const metaEl = document.getElementById('claudeUsageMeta');
+  const activityEl = document.getElementById('claudeUsageActivity');
+  if (!panel || !barsEl) return;
+
+  // Nothing polled yet (or the snapshot aged past MAX_PAYLOAD_AGE_MS and was
+  // cleared server-side). Keep the panel hidden so users without
+  // ClaudeMonitor running don't see an empty widget.
+  if (!snapshot || !snapshot.payload) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+
+  const { payload, receivedAt, stale, lastError } = snapshot;
+
+  planEl.textContent = payload.plan || '';
+  const metaParts = [];
+  if (receivedAt) metaParts.push(`Updated ${timeSince(receivedAt.replace(/Z$/, ''))}`);
+  if (stale) metaParts.push(lastError ? `⚠ stale (${lastError})` : '⚠ stale');
+  metaEl.textContent = metaParts.join(' · ');
+
+  panel.classList.toggle('stale', !!stale);
+  panel.classList.remove('errored');
+
+  if (activityEl) {
+    if (payload.activity && payload.activity.level && payload.activity.level !== 'Hidden') {
+      const lvl = ACTIVITY_LEVEL_CLASS[payload.activity.level] || 'normal';
+      activityEl.className = `usage-activity level-${lvl}`;
+      activityEl.textContent = payload.activity.label || payload.activity.level;
+      activityEl.hidden = false;
+    } else {
+      activityEl.hidden = true;
+    }
+  }
+
+  if (payload.isLoggedIn === false) {
+    barsEl.innerHTML = `<div class="usage-error">ClaudeMonitor 未登入 claude.ai — 請開啟 ClaudeMonitor 完成登入</div>`;
+    panel.classList.add('errored');
+    return;
+  }
+
+  const rows = [];
+
+  if (payload.session) {
+    rows.push(renderPctRow('Session (5h)', payload.session.usedPct, payload.session.resetText, payload.session.resetAt));
+  }
+  if (payload.weeklyAllModels) {
+    rows.push(renderPctRow('7 Day · All', payload.weeklyAllModels.usedPct, payload.weeklyAllModels.resetText, payload.weeklyAllModels.resetAt));
+  }
+  if (payload.weeklySonnet) {
+    rows.push(renderPctRow('7 Day · Sonnet', payload.weeklySonnet.usedPct, payload.weeklySonnet.resetText, payload.weeklySonnet.resetAt));
+  }
+  if (payload.weeklyOpus) {
+    rows.push(renderPctRow('7 Day · Opus', payload.weeklyOpus.usedPct, payload.weeklyOpus.resetText, payload.weeklyOpus.resetAt));
+  }
+  if (payload.weeklyDesign) {
+    rows.push(renderPctRow('Claude Design', payload.weeklyDesign.usedPct, payload.weeklyDesign.resetText, payload.weeklyDesign.resetAt));
+  }
+  if (payload.dailyRoutineRuns) {
+    const r = payload.dailyRoutineRuns;
+    const suffix = (r.used != null && r.total != null) ? `(${r.used} / ${r.total})` : '';
+    // ClaudeMonitor labels this row "Resets daily" — payload often omits the
+    // field because the cadence is implicit, so fall back so the row doesn't
+    // render bare while every other quota row has a reset/status line below.
+    const resetText = r.resetText || 'Resets daily';
+    rows.push(renderPctRow('Daily Routine', r.usedPct, resetText, r.resetAt, suffix));
+  }
+  if (payload.extraUsage && payload.extraUsage.enabled) {
+    const e = payload.extraUsage;
+    const suffix = e.spentText ? `(${e.spentText})` : '';
+    rows.push(renderPctRow('Extra Usage', e.spentPct, e.resetText, e.resetAt, suffix));
+  }
+
+  if (rows.length === 0) {
+    barsEl.innerHTML = `<div class="usage-empty">尚無 usage 資料</div>`;
+    return;
+  }
+
+  barsEl.innerHTML = rows.join('');
+}
+
+async function pollClaudeUsage() {
+  try {
+    const r = await fetch('/api/claude/usage');
+    if (!r.ok) return;
+    const snap = await r.json();
+    renderClaudeUsage(snap);
+  } catch {}
+}
+
+// ─── Claude Activity Analysis (24h bar + 7×24 heatmap) ──────
+
+let claudeUsage24hInstance = null;
+let claudeUsageHeatmapInstance = null;
+const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// ECharts category yAxis renders data[0] at the bottom. To put Monday at the
+// top and Sunday at the bottom, the y labels are listed bottom→top.
+const HEATMAP_Y_LABELS = ['Sun', 'Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon'];
+const dowToYIndex = (dow) => (7 - dow) % 7;
+
+// Tier colors mirror ClaudeMonitor's tray UI legend:
+//   Quiet   = blue
+//   Normal  = green
+//   Active  = orange
+//   Peak    = red
+//   No data = gray
+// (Maxed lives in the badge — Session% / Weekly% absolute trigger — not
+// in the hourly heatmap, so it's only present in the legend below.)
+const TIER_COLORS = {
+  noData: '#2e3345',
+  quiet:  '#3b82f6',
+  normal: '#22c55e',
+  active: '#f59e0b',
+  peak:   '#ef4444',
+  maxed:  '#ec4899',
+};
+
+function analysisColor(v, thresholds) {
+  if (v == null || v <= 0) return TIER_COLORS.noData;
+  if (v >= thresholds.peak)   return TIER_COLORS.peak;
+  if (v >= thresholds.active) return TIER_COLORS.active;
+  if (v >= thresholds.normal) return TIER_COLORS.normal;
+  return TIER_COLORS.quiet;
+}
+
+// Fallback color thresholds when ClaudeMonitor doesn't have ≥3 days of
+// history yet (per API.md: FallbackPeak=3.0 / FallbackActive=1.5 / FallbackNormal=0.3).
+// Used so the charts still light up meaningfully on day 1 instead of
+// showing a blank heatmap until percentile thresholds activate.
+const FALLBACK_THRESHOLDS = { peak: 3.0, active: 1.5, normal: 0.3 };
+
+function renderClaudeAnalysis(snapshot) {
+  const wrap = document.getElementById('claudeUsageCharts');
+  const noteEl = document.getElementById('claudeAnalysisNote');
+  if (!wrap) return;
+
+  const payload = snapshot && snapshot.payload;
+  // Hide only when we genuinely have nothing to show.
+  if (!payload || !payload.hourlyAvg) {
+    wrap.hidden = true;
+    return;
+  }
+  const anyData = payload.hourlyAvg.some((v) => v > 0);
+  if (!anyData) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+
+  const useFallback = !payload.hasEnoughData;
+  const thresholds = useFallback
+    ? FALLBACK_THRESHOLDS
+    : { peak: payload.peakThreshold, active: payload.activeThreshold, normal: payload.normalThreshold };
+
+  if (noteEl) {
+    const spanBit = payload.spanDays != null ? `rolling ${payload.spanDays} days` : '';
+    const fallbackBit = useFallback ? ' · fallback thresholds' : '';
+    noteEl.textContent = (spanBit || fallbackBit) ? `· ${spanBit}${fallbackBit}` : '';
+  }
+
+  // 24-hour bar
+  if (!claudeUsage24hInstance) {
+    claudeUsage24hInstance = echarts.init(
+      document.getElementById('claudeUsage24hChart'), null, { renderer: 'canvas' }
+    );
+  }
+  const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+  const barData = (payload.hourlyAvg || []).map((v) => ({
+    value: v,
+    itemStyle: { color: analysisColor(v, thresholds) },
+  }));
+  claudeUsage24hInstance.setOption({
+    backgroundColor: 'transparent',
+    textStyle: { color: '#9ba0b5' },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#1a1d27',
+      borderColor: '#2e3345',
+      textStyle: { color: '#e4e6ed', fontSize: 12 },
+      formatter: (p) => {
+        const i = p[0].dataIndex;
+        const samples = (payload.hourlySamples || [])[i] ?? 0;
+        return `${hours[i]}:00<br>Avg: ${p[0].value.toFixed(2)}<br>Samples: ${samples}`;
+      },
+    },
+    grid: { left: 36, right: 16, top: 10, bottom: 28 },
+    xAxis: {
+      type: 'category',
+      data: hours,
+      axisLabel: { color: '#9ba0b5', fontSize: 10, interval: 'auto', hideOverlap: true },
+      axisLine: { lineStyle: { color: '#2e3345' } },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { color: '#9ba0b5', fontSize: 10 },
+      splitLine: { lineStyle: { color: '#2e334522' } },
+    },
+    series: [{
+      type: 'bar',
+      data: barData,
+      barCategoryGap: '20%',
+      markLine: {
+        silent: true,
+        symbol: 'none',
+        // position:'insideEndTop' anchors labels inside the plot area, just
+        // above the line at the right edge — keeps them inside grid.right
+        // even on narrow screens where the previous outside placement
+        // overflowed the chart canvas.
+        lineStyle: { type: 'dashed', width: 1 },
+        label: { position: 'insideEndTop', distance: 0 },
+        data: [
+          { yAxis: thresholds.peak,   lineStyle: { color: TIER_COLORS.peak },   label: { color: '#fca5a5', fontSize: 10, formatter: 'Peak' } },
+          { yAxis: thresholds.active, lineStyle: { color: TIER_COLORS.active }, label: { color: '#fbbf24', fontSize: 10, formatter: 'Active' } },
+        ],
+      },
+    }],
+  }, true);
+
+  // 7×24 heatmap
+  if (!claudeUsageHeatmapInstance) {
+    claudeUsageHeatmapInstance = echarts.init(
+      document.getElementById('claudeUsageHeatmap'), null, { renderer: 'canvas' }
+    );
+  }
+  const heatmapData = [];
+  const samplesByDow = payload.hourlySamplesByDow || [];
+  (payload.hourlyByDow || []).forEach((row, dow) => {
+    row.forEach((v, h) => {
+      heatmapData.push({
+        value: [h, dowToYIndex(dow), v],
+        realDow: dow,
+      });
+    });
+  });
+  claudeUsageHeatmapInstance.setOption({
+    backgroundColor: 'transparent',
+    textStyle: { color: '#9ba0b5' },
+    tooltip: {
+      backgroundColor: '#1a1d27',
+      borderColor: '#2e3345',
+      textStyle: { color: '#e4e6ed', fontSize: 12 },
+      formatter: (p) => {
+        const [h, , v] = p.value;
+        const dow = p.data.realDow;
+        const samples = (samplesByDow[dow] || [])[h] ?? 0;
+        return `${DOW_LABELS[dow]} ${String(h).padStart(2, '0')}:00<br>Avg: ${(v ?? 0).toFixed(2)}<br>Samples: ${samples}`;
+      },
+    },
+    grid: { left: 36, right: 16, top: 10, bottom: 44 },
+    xAxis: {
+      type: 'category',
+      data: hours,
+      axisLabel: { color: '#9ba0b5', fontSize: 9, interval: 'auto', hideOverlap: true },
+      splitArea: { show: false },
+    },
+    yAxis: {
+      type: 'category',
+      data: HEATMAP_Y_LABELS,
+      axisLabel: { color: '#9ba0b5', fontSize: 10 },
+      splitArea: { show: false },
+    },
+    visualMap: {
+      type: 'piecewise',
+      show: true,
+      orient: 'horizontal',
+      left: 'center',
+      bottom: 0,
+      itemWidth: 12,
+      itemHeight: 10,
+      itemGap: 6,
+      textGap: 4,
+      padding: 0,
+      textStyle: { color: '#9ba0b5', fontSize: 10 },
+      pieces: [
+        { value: 0, label: 'No data', color: TIER_COLORS.noData },
+        { gt: 0, lt: thresholds.normal, label: 'Quiet', color: TIER_COLORS.quiet },
+        { gte: thresholds.normal, lt: thresholds.active, label: 'Normal', color: TIER_COLORS.normal },
+        { gte: thresholds.active, lt: thresholds.peak, label: 'Active', color: TIER_COLORS.active },
+        { gte: thresholds.peak, label: 'Peak', color: TIER_COLORS.peak },
+        // Maxed is a Session/Weekly absolute trigger that the hourly avg
+        // doesn't carry — never matches data, but renders in the legend
+        // so users see the tier exists.
+        { gte: 1e9, label: 'Maxed', color: TIER_COLORS.maxed },
+      ],
+      outOfRange: { color: TIER_COLORS.noData },
+    },
+    series: [{
+      type: 'heatmap',
+      data: heatmapData,
+      itemStyle: { borderColor: '#1a1d27', borderWidth: 1, borderRadius: 2 },
+      emphasis: { itemStyle: { borderColor: '#fff', borderWidth: 1 } },
+    }],
+  }, true);
+}
+
+async function pollClaudeAnalysis() {
+  try {
+    const r = await fetch('/api/claude/analysis');
+    if (!r.ok) return;
+    const snap = await r.json();
+    renderClaudeAnalysis(snap);
+  } catch {}
+}
+
+// Format a fractional-hour count (e.g. 2.917 from ClaudeMonitor's eta) as
+// "2h 55m". Sub-hour values render as "Xm"; sub-minute as "<1m".
+function formatHours(h) {
+  if (h == null || !isFinite(h) || h < 0) return '--';
+  const totalMin = Math.round(h * 60);
+  if (totalMin < 1) return '<1m';
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  if (hh === 0) return `${mm}m`;
+  return `${hh}h ${mm}m`;
+}
+
+// Cache ECharts instances for the two ring charts so resize() can hit them
+// without re-init.
+let statSessionRingInstance = null;
+let statWeekRingInstance = null;
+let statResetHistInstance = null;
+
+function renderRing(id, instanceKey, peakPct, avgPct) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  let inst = window[instanceKey];
+  if (!inst) {
+    inst = echarts.init(el, null, { renderer: 'canvas' });
+    window[instanceKey] = inst;
+  }
+  // Two stacked rings — peak (outer, red) wraps avg (inner, orange). Both
+  // use thin radii (`['82%','92%']` / `['68%','78%']`) so the chart reads
+  // as concentric pencil-thin arcs rather than chunky donuts.
+  const peakArc = peakPct != null ? Math.max(0, Math.min(100, peakPct)) : 0;
+  const avgArc  = avgPct  != null ? Math.max(0, Math.min(100, avgPct))  : 0;
+  inst.setOption({
+    backgroundColor: 'transparent',
+    series: [
+      {
+        type: 'pie',
+        radius: ['82%', '92%'],
+        avoidLabelOverlap: false,
+        silent: true,
+        label: { show: false },
+        labelLine: { show: false },
+        startAngle: 90,
+        data: [
+          { value: peakArc, itemStyle: { color: '#fca5a5' } },
+          { value: 100 - peakArc, itemStyle: { color: 'rgba(255,255,255,0.06)' } },
+        ],
+      },
+      {
+        type: 'pie',
+        radius: ['68%', '78%'],
+        avoidLabelOverlap: false,
+        silent: true,
+        label: { show: false },
+        labelLine: { show: false },
+        startAngle: 90,
+        data: [
+          { value: avgArc, itemStyle: { color: '#fbbf24' } },
+          { value: 100 - avgArc, itemStyle: { color: 'rgba(255,255,255,0.06)' } },
+        ],
+      },
+    ],
+  }, true);
+  return inst;
+}
+
+function renderClaudeStats(snapshot) {
+  const wrap = document.getElementById('claudeUsageStats');
+  if (!wrap) return;
+
+  const payload = snapshot && snapshot.payload;
+  if (!payload) { wrap.hidden = true; return; }
+  wrap.hidden = false;
+
+  const noteEl = document.getElementById('claudeStatsNote');
+  if (noteEl) {
+    const lookback = payload.lookbackDays != null ? `last ${payload.lookbackDays} days` : 'rolling window';
+    const valid = payload.validSessions != null && payload.totalSessions != null
+      ? ` · ${payload.validSessions}/${payload.totalSessions} valid sessions`
+      : '';
+    noteEl.textContent = `· ${lookback}${valid}`;
+  }
+
+  // SESSION ring
+  const session = payload.session || {};
+  document.getElementById('statSessionPeak').textContent =
+    session.peakPct != null ? `${session.peakPct.toFixed(1)}%` : '--';
+  document.getElementById('statSessionAvg').textContent =
+    session.avgPct != null ? `${session.avgPct.toFixed(1)}%` : '--';
+  statSessionRingInstance = renderRing('statSessionRing', 'statSessionRingInstance', session.peakPct, session.avgPct);
+
+  // WEEK ring
+  const week = payload.week || {};
+  document.getElementById('statWeekPeak').textContent =
+    week.peakPct != null ? `${week.peakPct.toFixed(1)}%` : '--';
+  document.getElementById('statWeekAvg').textContent =
+    week.avgPct != null ? `${week.avgPct.toFixed(1)}%` : '--';
+  statWeekRingInstance = renderRing('statWeekRing', 'statWeekRingInstance', week.peakPct, week.avgPct);
+
+  // ACTIVE-DAY STREAK
+  const streak = payload.streak || {};
+  document.getElementById('statStreakValue').textContent =
+    streak.current != null ? `${streak.current} days in a row` : '--';
+  document.getElementById('statStreakSub').textContent =
+    streak.best != null ? `Best run: ${streak.best} days · last 7 days ↓` : '';
+  // last7Active[0] = oldest (6 days ago), last7Active[6] = today.
+  // Render under each pip: a single-letter weekday derived from now - (6 - i).
+  const dotsEl = document.getElementById('statStreakDots');
+  const last7 = Array.isArray(streak.last7Active) ? streak.last7Active : [];
+  const today = new Date();
+  const wkLetters = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  dotsEl.innerHTML = last7.map((on, i) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (6 - i));
+    const isToday = i === last7.length - 1;
+    return `<span class="usage-stat-dot${on ? ' active' : ''}${isToday ? ' today' : ''}"><span class="pip"></span><span>${wkLetters[d.getDay()]}</span></span>`;
+  }).join('');
+
+  // LAST 100% (MAXED OUT)
+  const lastMaxed = payload.lastMaxed || {};
+  const lookbackDays = payload.lookbackDays || 30;
+  const maxedValEl = document.getElementById('statMaxedValue');
+  const maxedSubEl = document.getElementById('statMaxedSub');
+  const maxedTL = document.getElementById('statMaxedTimeline');
+  const maxedMarker = document.getElementById('statMaxedMarker');
+  if (lastMaxed.found) {
+    maxedValEl.innerHTML = `<span style="color:#fca5a5;">●</span> ${lastMaxed.daysAgo.toFixed(1)}d ago`;
+    maxedSubEl.textContent = `Last session that hit 100% within the last ${lookbackDays} days.`;
+    maxedTL.hidden = false;
+    // Marker: 0 days ago = 100% (right), lookbackDays ago = 0% (left).
+    const pct = Math.max(0, Math.min(100, 100 - (lastMaxed.daysAgo / lookbackDays) * 100));
+    maxedMarker.style.left = `${pct}%`;
+  } else {
+    maxedValEl.innerHTML = `<span style="color:#6ee7b7;">✓</span> never maxed in window`;
+    maxedSubEl.textContent = `No session reached 100% during the last ${lookbackDays}d.`;
+    maxedTL.hidden = true;
+  }
+
+  // LIVE RATE — paired bars scaled against the larger of (now, 7d-avg)
+  const rate = payload.rate || {};
+  const now = rate.hasNow && rate.nowPctPerHour != null ? rate.nowPctPerHour : 0;
+  const avg = rate.sevenDayAvgPctPerHour != null ? rate.sevenDayAvgPctPerHour : 0;
+  const rateMax = Math.max(now, avg, 0.01);
+  document.getElementById('statRateNow').textContent = rate.hasNow ? `${now.toFixed(1)} %/h` : '—';
+  document.getElementById('statRateAvg').textContent = avg ? `${avg.toFixed(1)} %/h` : '--';
+  document.getElementById('statRateNowFill').style.width = `${(now / rateMax) * 100}%`;
+  document.getElementById('statRateAvgFill').style.width = `${(avg / rateMax) * 100}%`;
+
+  // ETA TO 100%
+  const eta = payload.eta || {};
+  const etaValueEl = document.getElementById('statEtaValue');
+  const etaSubEl = document.getElementById('statEtaSub');
+  const etaFillEl = document.getElementById('statEtaFill');
+  if (eta.hasEstimate && eta.hoursRemaining != null) {
+    etaValueEl.textContent = formatHours(eta.hoursRemaining);
+    etaSubEl.textContent = eta.beforeReset === false
+      ? "after reset · won't hit 100% this session"
+      : 'before reset';
+    // Cap the bar at 24h so anything beyond a day reads as "very long".
+    const pct = Math.max(0, Math.min(100, 100 - (eta.hoursRemaining / 24) * 100));
+    etaFillEl.style.width = `${pct}%`;
+  } else {
+    etaValueEl.textContent = '—';
+    etaSubEl.textContent = eta.note || 'not enough data';
+    etaFillEl.style.width = '0%';
+  }
+
+  // ACTIVE HOURS
+  const ah = payload.activeHours || {};
+  const ahNow = ah.today != null ? ah.today : 0;
+  const ahAvg = ah.sevenDayAvg != null ? ah.sevenDayAvg : 0;
+  const ahMax = Math.max(ahNow, ahAvg, 0.01);
+  document.getElementById('statHoursValue').textContent =
+    ah.today != null ? `${ah.today} hours today` : '--';
+  document.getElementById('statHoursToday').textContent =
+    ah.today != null ? `${ahNow.toFixed(1)}h` : '--';
+  document.getElementById('statHoursAvg').textContent =
+    ah.sevenDayAvg != null ? `${ahAvg.toFixed(1)}h` : '--';
+  document.getElementById('statHoursTodayFill').style.width = `${(ahNow / ahMax) * 100}%`;
+  document.getElementById('statHoursAvgFill').style.width = `${(ahAvg / ahMax) * 100}%`;
+
+  // WEEK OVER WEEK
+  const wow = payload.weekOverWeek || {};
+  const setWowRow = (thisId, lastId, textId, valThis, valLast, fmt) => {
+    const max = Math.max(valThis, valLast, 0.01);
+    document.getElementById(thisId).style.width = `${(valThis / max) * 100}%`;
+    document.getElementById(lastId).style.width = `${(valLast / max) * 100}%`;
+    document.getElementById(textId).textContent = `${fmt(valThis)} vs ${fmt(valLast)}`;
+  };
+  setWowRow('wowActiveThis', 'wowActiveLast', 'wowActiveText',
+    wow.activeHoursThisWeek || 0, wow.activeHoursLastWeek || 0, (v) => `${v}h`);
+  setWowRow('wowPeakThis', 'wowPeakLast', 'wowPeakText',
+    wow.peakSessionsThisWeek || 0, wow.peakSessionsLastWeek || 0, (v) => `${v}`);
+  setWowRow('wowMeanThis', 'wowMeanLast', 'wowMeanText',
+    wow.meanSessionPctThisWeek || 0, wow.meanSessionPctLastWeek || 0, (v) => v.toFixed(1));
+
+  // Session reset hour distribution — 24-bar mini histogram. ClaudeMonitor
+  // colours every bar the same (orange-ish "active" tier) since the chart
+  // is a frequency view, not a tier view; we follow the same convention.
+  const histRows = Array.isArray(payload.resetHourHistogram) ? payload.resetHourHistogram : [];
+  if (histRows.length === 24) {
+    const histEl = document.getElementById('statResetHistChart');
+    if (histEl) {
+      if (!statResetHistInstance) {
+        statResetHistInstance = echarts.init(histEl, null, { renderer: 'canvas' });
+      }
+      const counts = histRows.map((r) => r.count || 0);
+      const labels = histRows.map((r) => String(r.hour).padStart(2, '0'));
+      statResetHistInstance.setOption({
+        backgroundColor: 'transparent',
+        textStyle: { color: '#9ba0b5' },
+        tooltip: {
+          trigger: 'axis',
+          backgroundColor: '#1a1d27',
+          borderColor: '#2e3345',
+          textStyle: { color: '#e4e6ed', fontSize: 12 },
+          formatter: (p) => `${labels[p[0].dataIndex]}:00<br>${p[0].value} session(s)`,
+        },
+        grid: { left: 28, right: 12, top: 6, bottom: 22 },
+        xAxis: {
+          type: 'category',
+          data: labels,
+          axisLabel: { color: '#9ba0b5', fontSize: 9, interval: 2 },
+          axisLine: { lineStyle: { color: '#2e3345' } },
+        },
+        yAxis: {
+          type: 'value',
+          minInterval: 1,
+          axisLabel: { color: '#9ba0b5', fontSize: 9 },
+          splitLine: { lineStyle: { color: '#2e334522' } },
+        },
+        series: [{
+          type: 'bar',
+          data: counts,
+          barCategoryGap: '15%',
+          itemStyle: { color: '#fbbf24', borderRadius: [2, 2, 0, 0] },
+        }],
+      }, true);
+    }
+  }
+
+  // Time-of-day breakdown — single stacked bar made of N segments. Each
+  // segment colors against the tier palette by per-hour intensity
+  // (sumDelta / hours-in-bucket) relative to the mean across buckets,
+  // so peak hours of the day pop red, dead time fades to blue. Matches
+  // the colour vocabulary the rest of the panel already uses.
+  const buckets = Array.isArray(payload.timeBuckets) ? payload.timeBuckets : [];
+  const todBar = document.getElementById('statTodBar');
+  const todLabels = document.getElementById('statTodLabels');
+  if (todBar && todLabels && buckets.length > 0) {
+    const intensities = buckets.map((b) => {
+      const span = Math.max(1, (b.toHour || 0) - (b.fromHour || 0));
+      return (b.sumDelta || 0) / span;
+    });
+    const mean = intensities.reduce((s, v) => s + v, 0) / intensities.length || 0.0001;
+    const tierColorFor = (intensity) => {
+      if (intensity >= mean * 2) return TIER_COLORS.peak;
+      if (intensity >= mean * 1.2) return TIER_COLORS.active;
+      if (intensity >= mean * 0.5) return TIER_COLORS.normal;
+      if (intensity > 0) return TIER_COLORS.quiet;
+      return TIER_COLORS.noData;
+    };
+    const fmtHr = (h) => String(h).padStart(2, '0');
+    todBar.innerHTML = buckets.map((b, i) => {
+      const share = Math.max(0.01, b.sharePct || 0);
+      const col = tierColorFor(intensities[i]);
+      // Inline width via flex: <segment.share>% of the row.
+      return `<div class="usage-stats-tod-seg" style="flex: ${share} ${share} 0%; background: ${col};" title="${fmtHr(b.fromHour)}-${fmtHr(b.toHour)} · ${b.sharePct.toFixed(1)}%">${share >= 8 ? `${Math.round(b.sharePct)}%` : ''}</div>`;
+    }).join('');
+    todLabels.innerHTML = buckets.map((b, i) => {
+      const col = tierColorFor(intensities[i]);
+      return `<span><span class="swatch" style="background:${col};"></span>${fmtHr(b.fromHour)}–${fmtHr(b.toHour)} ${b.sharePct.toFixed(0)}%</span>`;
+    }).join('');
+  } else if (todBar) {
+    todBar.innerHTML = '';
+    todLabels.innerHTML = '';
+  }
+}
+
+async function pollClaudeStats() {
+  try {
+    const r = await fetch('/api/claude/stats');
+    if (!r.ok) return;
+    const snap = await r.json();
+    renderClaudeStats(snap);
   } catch {}
 }
 
@@ -272,8 +931,11 @@ async function renderStatusCards() {
     const statusClass = agent.status || 'unknown';
     const agentKey = normalizeAgentKey(agent.agent_name);
     const mdl = parseModel(modelMap[agent.agent_name]);
-    const modelPill = mdl.label
-      ? `<span class="card-model family-${mdl.family}" title="${modelMap[agent.agent_name]}">${mdl.label}</span>`
+    const modelPillNarrow = mdl.label
+      ? `<span class="card-model card-model-narrow family-${mdl.family}" title="${modelMap[agent.agent_name]}">${mdl.label}</span>`
+      : '';
+    const modelPillWide = mdl.label
+      ? `<span class="card-model card-model-wide family-${mdl.family}" title="${modelMap[agent.agent_name]}">${mdl.label}</span>`
       : '';
 
     return `
@@ -282,17 +944,24 @@ async function renderStatusCards() {
           <span class="card-name">${agent.agent_name.replace('Claude-', '')}</span>
           <div class="card-badges">
             <span class="card-status ${statusClass}">${statusClass}</span>
-            <span class="card-signal"
+            <span class="card-signal card-signal-wide"
                   data-signal-for="${agentKey}"
                   data-uptime="${uptimePct == null ? '' : uptimePct}"
                   data-status-class="${statusClass}"></span>
           </div>
         </div>
+        <div class="card-subhead">
+          ${modelPillNarrow}
+          <span class="card-signal card-signal-narrow"
+                data-signal-for="${agentKey}"
+                data-uptime="${uptimePct == null ? '' : uptimePct}"
+                data-status-class="${statusClass}"></span>
+        </div>
         <div class="card-meta">
           <span>Uptime (7d): ${uptimePctStr}%</span>
           <div class="card-meta-row">
             <span class="card-lastseen" data-ts="${agent.timestamp}">Last seen: ${timeSince(agent.timestamp)}</span>
-            ${modelPill}
+            ${modelPillWide}
           </div>
           <span class="card-pid">${agent.pid ? `PID: ${agent.pid}` : ''}</span>
         </div>
@@ -689,3 +1358,29 @@ setInterval(() => refresh(), REFRESH_INTERVAL);
 // in case the WS is temporarily disconnected.
 pollAgentActivity();
 setInterval(pollAgentActivity, 30000);
+
+// Claude subscription usage — server probes every 5 min, so a 60s client
+// poll is plenty (ties the "Updated Ns ago" meta to roughly a minute of
+// freshness without flooding the endpoint).
+pollClaudeUsage();
+setInterval(pollClaudeUsage, 60_000);
+
+// Activity analysis is a rolling 14-day aggregate — the server only refetches
+// every 5 min, so 5 min on the client matches.
+pollClaudeAnalysis();
+setInterval(pollClaudeAnalysis, 5 * 60_000);
+
+// Stats poll cadence matches the server-side poller (5 min). The "live"
+// rate field changes faster than that upstream, but ClaudeMonitor only
+// publishes a refreshed snapshot every ~5 min anyway.
+pollClaudeStats();
+setInterval(pollClaudeStats, 5 * 60_000);
+
+// Re-layout panel charts on viewport resize so they stay sharp.
+window.addEventListener('resize', () => {
+  if (claudeUsage24hInstance) claudeUsage24hInstance.resize();
+  if (claudeUsageHeatmapInstance) claudeUsageHeatmapInstance.resize();
+  if (statSessionRingInstance) statSessionRingInstance.resize();
+  if (statWeekRingInstance) statWeekRingInstance.resize();
+  if (statResetHistInstance) statResetHistInstance.resize();
+});

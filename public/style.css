@@ -100,6 +100,556 @@ header h1 {
   to { transform: rotate(360deg); }
 }
 
+/* Claude Subscription Usage Panel */
+.claude-usage-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+
+.claude-usage-panel .usage-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.claude-usage-panel .usage-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.02em;
+  margin: 0;
+  margin-right: 2px;
+}
+
+/* Desktop: pills sit next to the title (left); meta gets pushed to the
+   far right by the auto margin. On narrow widths the title takes its own
+   row and meta drops the auto margin so the row-2 group reads
+   [activity] [plan] [meta] left-to-right. */
+.claude-usage-panel .usage-meta {
+  margin-left: auto;
+}
+@media (max-width: 540px) {
+  .claude-usage-panel .usage-title {
+    flex-basis: 100%;
+    margin-right: 0;
+  }
+  .claude-usage-panel .usage-meta {
+    margin-left: 0;
+  }
+}
+
+.claude-usage-panel .usage-plan {
+  font-size: 11px;
+  font-weight: 600;
+  color: #c084fc;
+  background: rgba(168, 85, 247, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  padding: 2px 9px;
+  border-radius: 999px;
+  text-transform: capitalize;
+}
+.claude-usage-panel .usage-plan:empty {
+  display: none;
+}
+
+.claude-usage-panel .usage-meta {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Activity badge — mirrors ClaudeMonitor's tray badge tiers. */
+.claude-usage-panel .usage-activity {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+/* Tier palette mirrors ClaudeMonitor's tray UI:
+   Maxed = pink/magenta · Peak = red · Active = orange · Normal = green
+   · Quiet = blue. (Earlier we had Quiet/Normal swapped vs the tray.) */
+.claude-usage-panel .usage-activity.level-maxed  { color: #f9a8d4; background: rgba(236, 72, 153, 0.18); border-color: rgba(236, 72, 153, 0.45); }
+.claude-usage-panel .usage-activity.level-peak   { color: #fca5a5; background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.4); }
+.claude-usage-panel .usage-activity.level-active { color: #fbbf24; background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); }
+.claude-usage-panel .usage-activity.level-normal { color: #6ee7b7; background: rgba(34, 197, 94, 0.15); border-color: rgba(34, 197, 94, 0.4); }
+.claude-usage-panel .usage-activity.level-quiet  { color: #93c5fd; background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.4); }
+
+.claude-usage-panel .usage-bars {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.claude-usage-panel .usage-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.claude-usage-panel .usage-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+}
+
+.claude-usage-panel .usage-label {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.claude-usage-panel .usage-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.claude-usage-panel .usage-bar {
+  position: relative;
+  height: 8px;
+  background: var(--surface2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.claude-usage-panel .usage-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--green);
+  transition: width 0.4s ease;
+}
+
+.claude-usage-panel .usage-bar-fill.level-low    { background: var(--green); }
+.claude-usage-panel .usage-bar-fill.level-mid    { background: #3b82f6; }
+.claude-usage-panel .usage-bar-fill.level-high   { background: var(--yellow); }
+.claude-usage-panel .usage-bar-fill.level-danger { background: var(--red); }
+
+.claude-usage-panel .usage-reset {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.claude-usage-panel .usage-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 10px 2px;
+}
+
+/* Activity analysis charts (24h bar + 7×24 heatmap), inside the same panel. */
+.claude-usage-panel .usage-charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 900px) {
+  .claude-usage-panel .usage-charts {
+    grid-template-columns: 1fr;
+  }
+}
+.claude-usage-panel .usage-chart-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.claude-usage-panel .usage-chart-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.claude-usage-panel .usage-chart-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 400;
+  margin-left: 4px;
+}
+.claude-usage-panel .usage-chart {
+  height: 160px;
+  width: 100%;
+}
+.claude-usage-panel .usage-chart-heatmap {
+  height: 210px;
+}
+
+/* Statistics block — ports ClaudeMonitor's Activity-details Statistics
+   layout: 8 cards in a 2-col / 4-col responsive grid (auto-fit at
+   minmax 220px so on a 1200+px panel we can fit 4 cards / row, narrower
+   wraps gracefully to 2/1 col).
+
+   Uses --tier-* variables defined alongside the activity badges so all
+   tier colors stay synced from one place. */
+.claude-usage-panel .usage-stats {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.claude-usage-panel .usage-stats-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin-bottom: 10px;
+}
+.claude-usage-panel .usage-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+.claude-usage-panel .usage-stat {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.claude-usage-panel .usage-stat-label {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+.claude-usage-panel .usage-stat-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.claude-usage-panel .usage-stat-legend .dot,
+.claude-usage-panel .usage-stat-ring-legend .dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.claude-usage-panel .dot.peak     { background: #fca5a5; }
+.claude-usage-panel .dot.active   { background: #fbbf24; }
+.claude-usage-panel .dot.wow-this { background: #fca5a5; }
+.claude-usage-panel .dot.wow-last { background: #93c5fd; }
+
+.claude-usage-panel .usage-stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.claude-usage-panel .usage-stat-value-sm {
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.claude-usage-panel .usage-stat-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.claude-usage-panel .usage-stat-sub:empty {
+  display: none;
+}
+
+/* Streak dots — 7 small circles, oldest -> today; today gets a thin ring
+   so users can locate "now" without counting from the left. */
+.claude-usage-panel .usage-stat-dots {
+  display: flex;
+  gap: 5px;
+  margin-top: 2px;
+  align-items: center;
+}
+.claude-usage-panel .usage-stat-dot {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  gap: 2px;
+}
+.claude-usage-panel .usage-stat-dot .pip {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.claude-usage-panel .usage-stat-dot.active .pip {
+  background: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.5);
+}
+.claude-usage-panel .usage-stat-dot.today .pip {
+  outline: 1px solid var(--text-muted);
+  outline-offset: 1px;
+}
+
+/* Ring cards (SESSION, WEEK) — thin pie ring + Peak/Avg legend on the
+   right. Chart container is a fixed 64×64 square so the layout doesn't
+   reflow when ECharts mounts. */
+.claude-usage-panel .usage-stat-ring-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.claude-usage-panel .usage-stat-ring-chart {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+}
+.claude-usage-panel .usage-stat-ring-legend {
+  font-size: 12px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* "now / 7d avg" paired bar rows used by LIVE RATE and ACTIVE HOURS. */
+.claude-usage-panel .usage-stat-pair {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.claude-usage-panel .usage-stat-pair-row {
+  display: grid;
+  grid-template-columns: 50px 1fr auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.claude-usage-panel .usage-stat-pair-label {
+  font-size: 10.5px;
+}
+.claude-usage-panel .usage-stat-pair-bar {
+  height: 6px;
+  background: var(--surface);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.claude-usage-panel .usage-stat-pair-bar .fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.claude-usage-panel .fill.rate-now { background: #fca5a5; }
+.claude-usage-panel .fill.rate-avg { background: #fbbf24; }
+.claude-usage-panel .usage-stat-pair-value {
+  color: var(--text);
+}
+
+/* ETA progress bar — single fill, color tracks how soon the limit hits. */
+.claude-usage-panel .usage-stat-progress {
+  height: 6px;
+  background: var(--surface);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+.claude-usage-panel .usage-stat-progress .fill {
+  height: 100%;
+  background: #fbbf24;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+/* Last-maxed timeline — start label, bar w/ marker, end label. Marker
+   sits at left edge if maxed recently, right edge if "today". When the
+   window has no max, the timeline hides and only the icon line shows. */
+.claude-usage-panel .usage-stat-timeline {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.claude-usage-panel .usage-stat-timeline-bar {
+  position: relative;
+  height: 4px;
+  background: var(--surface);
+  border-radius: 999px;
+}
+.claude-usage-panel .usage-stat-timeline-marker {
+  position: absolute;
+  top: -3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fca5a5;
+  border: 2px solid var(--surface2);
+  transform: translateX(-50%);
+  transition: left 0.4s ease;
+}
+
+/* Week-over-week — 3 rows, each pairs "this" (red) over "last" (blue)
+   inside the same bar slot so the eye can compare trend at a glance. */
+.claude-usage-panel .usage-stat-wow-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.claude-usage-panel .usage-stat-wow-row {
+  display: grid;
+  grid-template-columns: 70px 1fr 80px;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.claude-usage-panel .usage-stat-wow-row .lab {
+  font-size: 10.5px;
+}
+.claude-usage-panel .usage-stat-wow-row .bars {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.claude-usage-panel .usage-stat-wow-row .bar {
+  height: 4px;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+  min-width: 1px;
+}
+.claude-usage-panel .usage-stat-wow-row .bar.this { background: #fca5a5; }
+.claude-usage-panel .usage-stat-wow-row .bar.last { background: #93c5fd; }
+.claude-usage-panel .usage-stat-wow-row .num {
+  text-align: right;
+  color: var(--text);
+}
+
+/* Wide blocks below the 8-card grid (reset hour histogram, time-of-day
+   breakdown). They sit edge-to-edge inside the panel so the chart can
+   span the full width without cards squeezing them in. */
+.claude-usage-panel .usage-stats-block {
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.claude-usage-panel .usage-stats-block-title {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.claude-usage-panel .usage-stats-block-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.claude-usage-panel .usage-stats-hist {
+  width: 100%;
+  height: 110px;
+}
+
+/* Time-of-day stacked bar — single horizontal row of N coloured segments
+   (segment count = number of buckets configured in ClaudeMonitor). The
+   labels row beneath lists each bucket as "HH-HH NN%". */
+.claude-usage-panel .usage-stats-tod {
+  display: flex;
+  width: 100%;
+  height: 22px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.claude-usage-panel .usage-stats-tod-seg {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  color: rgba(0, 0, 0, 0.65);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  border-right: 1px solid rgba(0, 0, 0, 0.15);
+  transition: flex 0.4s ease;
+}
+.claude-usage-panel .usage-stats-tod-seg:last-child {
+  border-right: none;
+}
+.claude-usage-panel .usage-stats-tod-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.claude-usage-panel .usage-stats-tod-labels span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.claude-usage-panel .usage-stats-tod-labels .swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.claude-usage-panel.errored {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.claude-usage-panel.stale {
+  border-color: rgba(245, 158, 11, 0.35);
+}
+.claude-usage-panel.stale .usage-meta {
+  color: #fbbf24;
+}
+
+.claude-usage-panel .usage-raw {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  margin-left: 4px;
+}
+
+.claude-usage-panel .usage-error {
+  font-size: 12px;
+  color: #fca5a5;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 6px;
+}
+
 /* Status Cards */
 .status-groups {
   display: flex;
@@ -209,6 +759,37 @@ header h1 {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+}
+
+/* Sub-header row: model pill + activity/health signal, both left-aligned.
+   Hidden by default; only shown when the card is too narrow (container
+   query below) to fit name + status + signal on one row. */
+.card-subhead {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  min-height: 18px;
+  flex-wrap: wrap;
+}
+
+/* Default (wide cards): show the wide model pill (in the meta row) and
+   the wide-position signal (in the header). Narrow variants hidden. */
+.card-model-narrow,
+.card-signal-narrow {
+  display: none;
+}
+
+/* Narrow cards (mobile): swap the wide-position signal + meta-row model
+   pill for the dedicated subhead row. Use a viewport @media query
+   instead of @container so older Safari (which renders both layouts
+   when the container query fails to bind) is also handled. */
+@media (max-width: 540px) {
+  .card-subhead { display: flex; }
+  .card-signal-wide,
+  .card-model-wide { display: none !important; }
+  .card-model-narrow { display: inline-block; }
+  .card-signal-narrow:not(:empty) { display: inline-block; }
 }
 
 /* Model pill — which Claude model this agent's latest session is using.
