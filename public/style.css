@@ -546,6 +546,34 @@ header h1 {
   color: var(--text);
 }
 
+/* Wide blocks below the 8-card grid (reset hour histogram, time-of-day
+   breakdown). They sit edge-to-edge inside the panel so the chart can
+   span the full width without cards squeezing them in. */
+.claude-usage-panel .usage-stats-block {
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.claude-usage-panel .usage-stats-block-title {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.claude-usage-panel .usage-stats-block-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.claude-usage-panel .usage-stats-hist {
+  width: 100%;
+  height: 110px;
+}
+
 .claude-usage-panel.errored {
   border-color: rgba(239, 68, 68, 0.35);
 }

@@ -621,6 +621,7 @@ function formatHours(h) {
 // without re-init.
 let statSessionRingInstance = null;
 let statWeekRingInstance = null;
+let statResetHistInstance = null;
 
 function renderRing(id, instanceKey, peakPct, avgPct) {
   const el = document.getElementById(id);
@@ -798,6 +799,51 @@ function renderClaudeStats(snapshot) {
     wow.peakSessionsThisWeek || 0, wow.peakSessionsLastWeek || 0, (v) => `${v}`);
   setWowRow('wowMeanThis', 'wowMeanLast', 'wowMeanText',
     wow.meanSessionPctThisWeek || 0, wow.meanSessionPctLastWeek || 0, (v) => v.toFixed(1));
+
+  // Session reset hour distribution — 24-bar mini histogram. ClaudeMonitor
+  // colours every bar the same (orange-ish "active" tier) since the chart
+  // is a frequency view, not a tier view; we follow the same convention.
+  const histRows = Array.isArray(payload.resetHourHistogram) ? payload.resetHourHistogram : [];
+  if (histRows.length === 24) {
+    const histEl = document.getElementById('statResetHistChart');
+    if (histEl) {
+      if (!statResetHistInstance) {
+        statResetHistInstance = echarts.init(histEl, null, { renderer: 'canvas' });
+      }
+      const counts = histRows.map((r) => r.count || 0);
+      const labels = histRows.map((r) => String(r.hour).padStart(2, '0'));
+      statResetHistInstance.setOption({
+        backgroundColor: 'transparent',
+        textStyle: { color: '#9ba0b5' },
+        tooltip: {
+          trigger: 'axis',
+          backgroundColor: '#1a1d27',
+          borderColor: '#2e3345',
+          textStyle: { color: '#e4e6ed', fontSize: 12 },
+          formatter: (p) => `${labels[p[0].dataIndex]}:00<br>${p[0].value} session(s)`,
+        },
+        grid: { left: 28, right: 12, top: 6, bottom: 22 },
+        xAxis: {
+          type: 'category',
+          data: labels,
+          axisLabel: { color: '#9ba0b5', fontSize: 9, interval: 2 },
+          axisLine: { lineStyle: { color: '#2e3345' } },
+        },
+        yAxis: {
+          type: 'value',
+          minInterval: 1,
+          axisLabel: { color: '#9ba0b5', fontSize: 9 },
+          splitLine: { lineStyle: { color: '#2e334522' } },
+        },
+        series: [{
+          type: 'bar',
+          data: counts,
+          barCategoryGap: '15%',
+          itemStyle: { color: '#fbbf24', borderRadius: [2, 2, 0, 0] },
+        }],
+      }, true);
+    }
+  }
 }
 
 async function pollClaudeStats() {
@@ -1299,4 +1345,5 @@ window.addEventListener('resize', () => {
   if (claudeUsageHeatmapInstance) claudeUsageHeatmapInstance.resize();
   if (statSessionRingInstance) statSessionRingInstance.resize();
   if (statWeekRingInstance) statWeekRingInstance.resize();
+  if (statResetHistInstance) statResetHistInstance.resize();
 });
