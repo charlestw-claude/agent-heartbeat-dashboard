@@ -419,6 +419,82 @@ app.delete('/api/agent/:name/fresh-start', (req, res) => {
   }
 });
 
+// ─── Centralised TG message log ─────────────────────────────────
+// Cross-agent visibility for Manager-agent dispatch + audit. Agents POST every
+// outbound TG action (reply / react / edit_message) via a PostToolUse hook;
+// the central log is queryable by agent and time range.
+// Schema: see db/database.js (tg_messages table).
+
+// POST /api/tg-log — append one log entry
+app.post('/api/tg-log', (req, res) => {
+  const {
+    agent_name, direction, tool,
+    chat_id, message_id, reply_to,
+    text_preview, session_id, raw_response,
+  } = req.body || {};
+
+  if (!agent_name || !direction) {
+    return res.status(400).json({ error: 'agent_name and direction required' });
+  }
+  if (direction !== 'in' && direction !== 'out') {
+    return res.status(400).json({ error: "direction must be 'in' or 'out'" });
+  }
+
+  try {
+    const db = getDb();
+    const info = db.prepare(`
+      INSERT INTO tg_messages (
+        agent_name, direction, tool, chat_id, message_id,
+        reply_to, text_preview, session_id, raw_response
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      agent_name,
+      direction,
+      tool || null,
+      chat_id ? String(chat_id) : null,
+      message_id ? String(message_id) : null,
+      reply_to ? String(reply_to) : null,
+      text_preview || null,
+      session_id || null,
+      raw_response || null
+    );
+    res.json({ ok: true, id: info.lastInsertRowid });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/tg-log?hours=24&agent=Claude-Agent-03&direction=out&limit=200
+app.get('/api/tg-log', (req, res) => {
+  const hours = parseInt(req.query.hours) || 24;
+  const limit = Math.min(parseInt(req.query.limit) || 200, 1000);
+  const agent = req.query.agent;
+  const direction = req.query.direction;
+
+  let query = `
+    SELECT id, agent_name, direction, tool, chat_id, message_id,
+           reply_to, text_preview, session_id, raw_response, timestamp
+    FROM tg_messages
+    WHERE timestamp >= datetime('now', '-${hours} hours')
+  `;
+  const params = [];
+
+  if (agent) {
+    query += ' AND agent_name = ?';
+    params.push(agent);
+  }
+  if (direction === 'in' || direction === 'out') {
+    query += ' AND direction = ?';
+    params.push(direction);
+  }
+
+  query += ' ORDER BY timestamp DESC LIMIT ?';
+  params.push(limit);
+
+  const rows = getDb().prepare(query).all(...params);
+  res.json(rows);
+});
+
 // Fallback: serve index.html for SPA
 app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

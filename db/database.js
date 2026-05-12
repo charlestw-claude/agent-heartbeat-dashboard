@@ -27,6 +27,20 @@ function initDb() {
       timestamp DATETIME DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS tg_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      agent_name TEXT NOT NULL,
+      direction TEXT NOT NULL CHECK(direction IN ('in', 'out')),
+      tool TEXT,
+      chat_id TEXT,
+      message_id TEXT,
+      reply_to TEXT,
+      text_preview TEXT,
+      session_id TEXT,
+      raw_response TEXT,
+      timestamp DATETIME DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_heartbeats_agent_ts
       ON heartbeats(agent_name, timestamp);
 
@@ -35,6 +49,12 @@ function initDb() {
 
     CREATE INDEX IF NOT EXISTS idx_events_ts
       ON events(timestamp);
+
+    CREATE INDEX IF NOT EXISTS idx_tg_messages_ts
+      ON tg_messages(timestamp);
+
+    CREATE INDEX IF NOT EXISTS idx_tg_messages_agent_ts
+      ON tg_messages(agent_name, timestamp);
   `);
 
   // Migration: add source column to existing heartbeats tables (idempotent)
@@ -53,6 +73,10 @@ function initDb() {
 
   db.prepare(`
     DELETE FROM events WHERE timestamp < datetime('now', '-90 days')
+  `).run();
+
+  db.prepare(`
+    DELETE FROM tg_messages WHERE timestamp < datetime('now', '-90 days')
   `).run();
 
   console.log('Database initialized:', DB_PATH);
