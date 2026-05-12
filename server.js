@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const http = require('http');
+const fs = require('fs');
+const os = require('os');
 const { spawn } = require('child_process');
 const { initDb, getDb } = require('./db/database');
 const { initMetricsSchema } = require('./db/metrics-schema');
@@ -21,6 +23,27 @@ const CHECK_NOW_COOLDOWN_MS = 15_000;
 const CHECK_NOW_TIMEOUT_MS = 60_000;
 let lastCheckNowAt = 0;
 let checkNowInFlight = false;
+
+// Agent name -> channel state dir (mirrors health-check.ps1's $agentChannelDirMap).
+// The .bat files set TELEGRAM_STATE_DIR to %USERPROFILE%\.claude\channels\<value>,
+// which is where last_session.txt and fresh-start.flag live.
+const CHANNELS_ROOT = path.join(os.homedir(), '.claude', 'channels');
+const AGENT_CHANNEL_DIRS = {
+  'Claude-Agent-01': 'telegram',
+  'Claude-Agent-02': 'telegram-agent-02',
+  'Claude-Agent-03': 'telegram-agent-03',
+  'Claude-Agent-04': 'telegram-agent-04',
+  'Claude-Agent-05': 'telegram-agent-05',
+  'Claude-Deloitte': 'telegram-deloitte',
+  'Claude-Quant': 'telegram-quant',
+  'Claude-Quant-2': 'telegram-quant-2',
+  'Guest-Agent': 'telegram-guest-agent',
+};
+
+function getAgentStateDir(name) {
+  const dir = AGENT_CHANNEL_DIRS[name];
+  return dir ? path.join(CHANNELS_ROOT, dir) : null;
+}
 
 app.use(cors());
 app.use(express.json());
@@ -340,6 +363,60 @@ app.get('/api/metrics/hourly', (req, res) => {
     ORDER BY ts
   `).all(from);
   res.json(rows);
+});
+
+// ─── Per-agent session control ──────────────────────────────
+// Reads/writes files under %USERPROFILE%\.claude\channels\<dir>\:
+//   - fresh-start.flag  : if present, the agent's .bat does a clean start
+//                         and consumes the flag (one-shot)
+//   - last_session.txt  : the last Claude Code session_id; the .bat passes
+//                         this to `claude --resume` on restart
+
+// GET /api/agent/:name/session-state — current flag + last session id
+app.get('/api/agent/:name/session-state', (req, res) => {
+  const stateDir = getAgentStateDir(req.params.name);
+  if (!stateDir) return res.status(404).json({ error: 'unknown agent' });
+
+  const flagPath = path.join(stateDir, 'fresh-start.flag');
+  const sessionPath = path.join(stateDir, 'last_session.txt');
+
+  const fresh_start = fs.existsSync(flagPath);
+  let last_session = null;
+  try {
+    if (fs.existsSync(sessionPath)) {
+      last_session = fs.readFileSync(sessionPath, 'utf8').trim() || null;
+    }
+  } catch {}
+
+  res.json({ agent: req.params.name, fresh_start, last_session });
+});
+
+// POST /api/agent/:name/fresh-start — set the one-shot flag
+app.post('/api/agent/:name/fresh-start', (req, res) => {
+  const stateDir = getAgentStateDir(req.params.name);
+  if (!stateDir) return res.status(404).json({ error: 'unknown agent' });
+
+  try {
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, 'fresh-start.flag'), new Date().toISOString());
+    res.json({ ok: true, agent: req.params.name, fresh_start: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/agent/:name/fresh-start — clear the flag
+app.delete('/api/agent/:name/fresh-start', (req, res) => {
+  const stateDir = getAgentStateDir(req.params.name);
+  if (!stateDir) return res.status(404).json({ error: 'unknown agent' });
+
+  try {
+    const flagPath = path.join(stateDir, 'fresh-start.flag');
+    if (fs.existsSync(flagPath)) fs.unlinkSync(flagPath);
+    res.json({ ok: true, agent: req.params.name, fresh_start: false });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Fallback: serve index.html for SPA
