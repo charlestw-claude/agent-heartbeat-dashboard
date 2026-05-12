@@ -905,6 +905,50 @@ header h1 {
   margin-top: 2px;
 }
 
+/* Per-card "next startup mode" toggle. Clicking sets/clears fresh-start.flag
+ * for the agent. Visually a flat pill that lives under the status meta. */
+.card-next-start {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  text-align: left;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.card-next-start:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+
+.card-next-start.fresh {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+}
+
+.card-next-start.fresh:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.18);
+}
+
+.card-next-start:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.card-next-session {
+  opacity: 0.6;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+}
+
 /* Charts */
 .charts-row {
   display: grid;

@@ -917,6 +917,19 @@ async function renderStatusCards() {
   const modelMap = {};
   (Array.isArray(models) ? models : []).forEach((m) => { modelMap[m.agent] = m.model; });
 
+  // Per-agent session state for the "next startup" toggle. 404s (unknown
+  // agent in the mapping) just yield null so the card still renders without
+  // the toggle.
+  const sessionStates = await Promise.all(
+    status.map((a) =>
+      fetch(`/api/agent/${encodeURIComponent(a.agent_name)}/session-state`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null)
+    )
+  );
+  const sessionStateMap = {};
+  status.forEach((a, i) => { sessionStateMap[a.agent_name] = sessionStates[i]; });
+
   const container = document.getElementById('statusCards');
 
   if (status.length === 0) {
@@ -937,6 +950,25 @@ async function renderStatusCards() {
     const modelPillWide = mdl.label
       ? `<span class="card-model card-model-wide family-${mdl.family}" title="${modelMap[agent.agent_name]}">${mdl.label}</span>`
       : '';
+
+    const ss = sessionStateMap[agent.agent_name];
+    const hasSession = !!(ss && ss.last_session);
+    const isFresh = !!(ss && ss.fresh_start);
+    let nextStartHtml = '';
+    if (ss) {
+      const nextLabel = isFresh ? '✨ 乾淨啟動 (一次性)' : '🔄 接續對話';
+      const sessionShort = hasSession ? ss.last_session.slice(0, 8) : '—';
+      const sessionTitle = hasSession
+        ? `Last session: ${ss.last_session}\nClick to ${isFresh ? 'cancel fresh start' : 'enable fresh start on next restart'}`
+        : 'No saved session yet — first restart will start clean either way';
+      nextStartHtml = `
+        <button class="card-next-start ${isFresh ? 'fresh' : 'resume'}"
+                data-agent-name="${agent.agent_name}"
+                data-fresh="${isFresh ? '1' : '0'}"
+                title="${sessionTitle}">
+          下次: ${nextLabel} <span class="card-next-session">[${sessionShort}]</span>
+        </button>`;
+    }
 
     return `
       <div class="status-card ${statusClass}" data-agent-key="${agentKey}">
@@ -964,6 +996,7 @@ async function renderStatusCards() {
             ${modelPillWide}
           </div>
           <span class="card-pid">${agent.pid ? `PID: ${agent.pid}` : ''}</span>
+          ${nextStartHtml}
         </div>
       </div>
     `;
@@ -1347,6 +1380,28 @@ async function refresh({ triggerCheck = false } = {}) {
 }
 
 document.getElementById('refreshBtn')?.addEventListener('click', () => refresh({ triggerCheck: true }));
+
+// Delegated click handler for the per-card "next startup mode" toggle.
+// Toggles fresh-start.flag on the VM via the dashboard API, then re-renders
+// the cards so the new state is reflected.
+document.getElementById('statusCards')?.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.card-next-start');
+  if (!btn) return;
+  const name = btn.dataset.agentName;
+  const currentlyFresh = btn.dataset.fresh === '1';
+  if (!name) return;
+
+  btn.disabled = true;
+  try {
+    const method = currentlyFresh ? 'DELETE' : 'POST';
+    const res = await fetch(`/api/agent/${encodeURIComponent(name)}/fresh-start`, { method });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await renderStatusCards();
+  } catch (err) {
+    console.error('toggle fresh-start failed:', err);
+    btn.disabled = false;
+  }
+});
 
 refresh();
 setInterval(() => refresh(), REFRESH_INTERVAL);
