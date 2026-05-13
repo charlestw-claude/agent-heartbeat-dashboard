@@ -6,6 +6,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and this proj
 
 > CHANGELOG 自 v1.6.0 起算，舊版資訊請參考 git tag 與 commit 歷史。
 
+## [1.7.0] - 2026-05-13
+
+### Added
+
+- **agents.conf 為單一真相來源**：`agents-conf.js` 啟動時讀 `../../profiles/vm-agent/config/agents/agents.conf`（TSV：name / channel_dir / token_env / color），原本散在 `server.js`、`public/app.js`、`metrics/collector.js` 的三份硬編 agent 清單全部派生自 conf。新增 `GET /api/agents-meta` 給前端拿色票，`collector.js` 的 `AGENT_NAME_PATTERN` 動態組成（longest-first 排序，Claude-Quant-2 優先於 Claude-Quant）。
+- **Per-agent activity timeline modal**：點任一 agent 狀態卡開啟 modal，顯示 events + Telegram 進出訊息（chronological，預設 24 h，可調 1 h–7 d）。三種 kind filter（event / inbound / outbound），最少保留一個。Heartbeat 排除避免洗版。新 endpoint `GET /api/agent/:name/timeline?hours=&kinds=&limit=`。
+- **寫入端 X-Dashboard-Secret 驗證**：所有 POST/DELETE 端點（`/api/heartbeat`、`/api/event`、`/api/check-now`、`/api/tg-log`、`/api/agent/:name/fresh-start`）走 `requireWriteAuth`。Loopback (127.0.0.1 / ::1 / ::ffff:127.0.0.1) 免驗證；非 loopback 要 `X-Dashboard-Secret` header 對到 `DASHBOARD_SECRET` 環境變數。沒設環境變數時 fallback 為「僅接受 loopback」。
+- **Centralised TG-message log**：新增 `tg_messages` 資料表 + `POST /api/tg-log`（plugin / hook 寫入）+ `GET /api/tg-log`（dashboard / 外部查詢）。
+- **Restart-loop 偵測 + 紅 banner**：偵測連續重啟頻率超過閾值的 agent，dashboard 頂端顯示紅色 banner 告警。
+- **Per-agent next-startup toggle**：狀態卡上新增按鈕，可切換下次啟動是否走 fresh-start（避開 last_session.txt resume）。`POST /api/agent/:name/fresh-start` 與 `DELETE` 對應端點。
+- **Per-agent session-state endpoints**：`GET /api/agent/:name/session-state` 回傳 last_session / fresh_start 旗標。
+- **Silent catch 補 log**：原本吞錯誤的 try/catch 全部加 `console.error`，方便事後追因。
+
+### Changed
+
+- **綁定 127.0.0.1（不再 0.0.0.0）**：dashboard server 改純 loopback 監聽，防止 LAN 內其他裝置直接打 API。
+- **Agent-01 channel dir rename 收尾**：`server.js` 的 `AGENT_CHANNEL_DIRS` 同步改為 `telegram-agent-01`。
+
+[1.7.0]: https://github.com/charlestw-claude/agent-heartbeat-dashboard/releases/tag/v1.7.0
+
 ## [1.6.0] - 2026-04-25
 
 ### Added

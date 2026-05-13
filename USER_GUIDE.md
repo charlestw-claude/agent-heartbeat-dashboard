@@ -1,7 +1,7 @@
 # USER GUIDE — agent-heartbeat-dashboard
 
-> 適用版本：v1.6.0
-> 最後更新：2026-04-25
+> 適用版本：v1.7.0
+> 最後更新：2026-05-13
 
 ---
 
@@ -13,9 +13,12 @@
 4. [Agent Status 區塊](#agent-status-區塊)
 5. [VM Realtime 區塊](#vm-realtime-區塊)
 6. [Claude Subscription 區塊](#claude-subscription-區塊)
-7. [響應式行為](#響應式行為)
-8. [常見問題（FAQ）](#常見問題faq)
-9. [疑難排解](#疑難排解)
+7. [Agent 設定來源（agents.conf）](#agent-設定來源agentsconf)
+8. [寫入端驗證（DASHBOARD_SECRET）](#寫入端驗證dashboard_secret)
+9. [API 端點速覽](#api-端點速覽)
+10. [響應式行為](#響應式行為)
+11. [常見問題（FAQ）](#常見問題faq)
+12. [疑難排解](#疑難排解)
 
 ---
 
@@ -97,6 +100,30 @@ Stop-Process -Id <PID> -Force
 
 > 透過按鈕觸發的健康檢查會被標記為 `source=manual`，不會列入 Daily Routine 統計。
 
+### Activity Timeline Modal（v1.7.0+）
+
+點任一 agent 狀態卡，即可打開該 agent 的活動 timeline modal：
+
+- 預設顯示**過去 24 小時**的 events 與 Telegram 進出訊息（chronological）
+- 時段可調整：1 h / 6 h / 24 h / 7 d
+- Kind filter：`event` / `inbound` / `outbound` 三種，至少需保留一個
+- Heartbeat 事件已預先排除，避免洗版
+
+對應 API：`GET /api/agent/:name/timeline?hours=&kinds=&limit=`
+
+### Restart-loop Banner（v1.7.0+）
+
+當 dashboard 偵測到某個 agent 在短時間內重啟頻率超過閾值，會在頁首顯示**紅色 banner** 警示，便於即時發現異常迴圈。
+
+### Per-agent Fresh-start Toggle（v1.7.0+）
+
+每張 agent 卡片新增一個按鈕，可切換**下次啟動是否走 fresh-start**：
+
+- 預設：透過 `last_session.txt` resume 上次對話
+- Fresh-start：忽略 last_session.txt，下次以全新 session 啟動
+- 對應 API：`POST /api/agent/:name/fresh-start`、`DELETE /api/agent/:name/fresh-start`
+- 查詢狀態：`GET /api/agent/:name/session-state`
+
 ---
 
 ## VM Realtime 區塊
@@ -168,6 +195,71 @@ Stop-Process -Id <PID> -Force
 
 - **Session reset hour 直方圖**：所有歷史 session 的開始時段分布
 - **24 小時時段強度**：依每小時平均活動量分為 5 級色階（Quiet / Normal / Active / Peak / Maxed）
+
+---
+
+## Agent 設定來源（agents.conf）
+
+自 **v1.7.0** 起，dashboard 的 agent 清單與顏色不再內建硬編，而是從 vm-agent profile 的設定檔派生：
+
+```
+profiles/vm-agent/config/agents/agents.conf
+```
+
+TSV 格式（4 欄，以 tab 分隔）：
+
+| 欄位 | 說明 |
+|------|------|
+| `name` | agent 名稱（如 `Claude-Agent-01`） |
+| `channel_dir` | 對應的 Telegram channel 子目錄 |
+| `token_env` | bot token 環境變數名稱 |
+| `color` | 卡片色票（hex，如 `#3b82f6`） |
+
+啟動時 `agents-conf.js` 一次性讀入並 cache。`server.js`、`metrics/collector.js`、前端 `public/app.js` 全部從這份 conf 派生資料，避免清單在多處不同步。
+
+新增 / 修改 agent 時，**只需要編輯 agents.conf 一個檔案**（搭配環境變數），dashboard 與 health-check.ps1 會自動跟上。
+
+前端取色用的 endpoint：`GET /api/agents-meta` → `[{name, color}]`
+
+---
+
+## 寫入端驗證（DASHBOARD_SECRET）
+
+自 **v1.7.0** 起，dashboard server 採取以下安全策略：
+
+1. **僅綁定 `127.0.0.1`**：不再聽 `0.0.0.0`，LAN 內其他裝置無法直接打 API
+2. **寫入端驗證（`requireWriteAuth`）**：所有 `POST` / `DELETE` 端點受保護
+   - Loopback (`127.0.0.1` / `::1` / `::ffff:127.0.0.1`)：免驗證
+   - 非 loopback：需在 header 帶 `X-Dashboard-Secret`，值對應到 `DASHBOARD_SECRET` 環境變數
+   - 若 `DASHBOARD_SECRET` 未設置：fallback 為「**僅接受 loopback**」
+
+讀取端（`GET`）不受影響。
+
+> **正常使用情境下無需任何設定** — agent .bat 與健康檢查腳本都在同一台 VM 上以 loopback 連線，會自動通過。`DASHBOARD_SECRET` 僅在有從非 loopback 來源寫入的需求時才需要設定。
+
+---
+
+## API 端點速覽
+
+| Method | Path | 說明 |
+|--------|------|------|
+| `GET` | `/api/agents-meta` | 取得 agent 名單與色票（前端啟動時呼叫） |
+| `GET` | `/api/agents` | agent 狀態快照（含 heartbeat、MCP、模型） |
+| `GET` | `/api/agent/:name/timeline` | 取 agent timeline（events + TG 進出） |
+| `GET` | `/api/agent/:name/session-state` | 取 last_session / fresh_start 旗標 |
+| `POST` | `/api/agent/:name/fresh-start` | 設定下次啟動走 fresh-start |
+| `DELETE` | `/api/agent/:name/fresh-start` | 取消 fresh-start 設定 |
+| `POST` | `/api/heartbeat` | agent / health-check 上報 heartbeat |
+| `POST` | `/api/event` | 上報 agent event（啟動、停止、crash 等） |
+| `POST` | `/api/check-now` | 觸發即時 health-check |
+| `POST` | `/api/tg-log` | 寫入 TG 進出訊息 log |
+| `GET` | `/api/tg-log` | 查詢 TG 訊息 log |
+| `GET` | `/api/claude/usage` | ClaudeMonitor 用量 proxy |
+| `GET` | `/api/claude/stats` | ClaudeMonitor 30 天統計 proxy |
+| `GET` | `/api/claude/analysis` | ClaudeMonitor 14 天聚合 proxy |
+| `WS` | `/ws` | VM realtime metrics |
+
+寫入類端點受 `requireWriteAuth` 保護（見上一節）。
 
 ---
 

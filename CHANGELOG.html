@@ -27,6 +27,26 @@
 
 <blockquote>CHANGELOG 自 v1.6.0 起算，舊版資訊請參考 git tag 與 commit 歷史。</blockquote>
 
+<h2 id="v1-7-0"><a href="#v1-7-0">[1.7.0] — 2026-05-13</a></h2>
+
+<h3>Added</h3>
+<ul>
+  <li><strong>agents.conf 為單一真相來源</strong>：<code>agents-conf.js</code> 啟動時讀 <code>../../profiles/vm-agent/config/agents/agents.conf</code>（TSV：name / channel_dir / token_env / color），原本散在 <code>server.js</code>、<code>public/app.js</code>、<code>metrics/collector.js</code> 的三份硬編 agent 清單全部派生自 conf。新增 <code>GET /api/agents-meta</code> 給前端拿色票，<code>collector.js</code> 的 <code>AGENT_NAME_PATTERN</code> 動態組成（longest-first 排序，Claude-Quant-2 優先於 Claude-Quant）。</li>
+  <li><strong>Per-agent activity timeline modal</strong>：點任一 agent 狀態卡開啟 modal，顯示 events + Telegram 進出訊息（chronological，預設 24 h，可調 1 h–7 d）。三種 kind filter（event / inbound / outbound），最少保留一個。Heartbeat 排除避免洗版。新 endpoint <code>GET /api/agent/:name/timeline?hours=&amp;kinds=&amp;limit=</code>。</li>
+  <li><strong>寫入端 X-Dashboard-Secret 驗證</strong>：所有 POST/DELETE 端點走 <code>requireWriteAuth</code>。Loopback (127.0.0.1 / ::1 / ::ffff:127.0.0.1) 免驗證；非 loopback 要 <code>X-Dashboard-Secret</code> header 對到 <code>DASHBOARD_SECRET</code> 環境變數。沒設環境變數時 fallback 為「僅接受 loopback」。</li>
+  <li><strong>Centralised TG-message log</strong>：新增 <code>tg_messages</code> 資料表 + <code>POST /api/tg-log</code>（plugin / hook 寫入）+ <code>GET /api/tg-log</code>（dashboard / 外部查詢）。</li>
+  <li><strong>Restart-loop 偵測 + 紅 banner</strong>：偵測連續重啟頻率超過閾值的 agent，dashboard 頂端顯示紅色 banner 告警。</li>
+  <li><strong>Per-agent next-startup toggle</strong>：狀態卡上新增按鈕，可切換下次啟動是否走 fresh-start（避開 last_session.txt resume）。<code>POST /api/agent/:name/fresh-start</code> 與 <code>DELETE</code> 對應端點。</li>
+  <li><strong>Per-agent session-state endpoints</strong>：<code>GET /api/agent/:name/session-state</code> 回傳 last_session / fresh_start 旗標。</li>
+  <li><strong>Silent catch 補 log</strong>：原本吞錯誤的 try/catch 全部加 <code>console.error</code>，方便事後追因。</li>
+</ul>
+
+<h3>Changed</h3>
+<ul>
+  <li><strong>綁定 127.0.0.1（不再 0.0.0.0）</strong>：dashboard server 改純 loopback 監聽，防止 LAN 內其他裝置直接打 API。</li>
+  <li><strong>Agent-01 channel dir rename 收尾</strong>：<code>server.js</code> 的 <code>AGENT_CHANNEL_DIRS</code> 同步改為 <code>telegram-agent-01</code>。</li>
+</ul>
+
 <h2 id="v1-6-0"><a href="#v1-6-0">[1.6.0] — 2026-04-25</a></h2>
 
 <h3>Added</h3>
