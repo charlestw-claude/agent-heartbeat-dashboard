@@ -53,10 +53,37 @@ app.use(express.static(path.join(__dirname, 'public')));
 initDb();
 initMetricsSchema();
 
+// ─── Write-endpoint auth ─────────────────────────────────────
+// Defence-in-depth on top of the LAN firewall: writes from a non-loopback
+// peer must present X-Dashboard-Secret. Loopback (127.0.0.1 / ::1) is exempt
+// because the only writers today — health-check.ps1, the TG plugin, the
+// outbound hook, and the dashboard's own browser UI — all run on this host.
+// If the firewall ever opens or the dashboard moves off-VM, set the env var
+// and have callers add the header (no callers need changes until then).
+const DASHBOARD_SECRET = process.env.DASHBOARD_SECRET || null;
+if (!DASHBOARD_SECRET) {
+  console.warn('[warn] DASHBOARD_SECRET unset — writes accepted from loopback only');
+} else {
+  console.log('[ok] DASHBOARD_SECRET set — non-loopback writes require X-Dashboard-Secret header');
+}
+
+function isLoopbackPeer(req) {
+  // express default (trust proxy off): req.ip is the socket peer. On Windows
+  // node binds dual-stack so IPv4 localhost arrives as ::ffff:127.0.0.1.
+  const ip = req.ip || (req.connection && req.connection.remoteAddress) || '';
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+}
+
+function requireWriteAuth(req, res, next) {
+  if (isLoopbackPeer(req)) return next();
+  if (DASHBOARD_SECRET && req.get('X-Dashboard-Secret') === DASHBOARD_SECRET) return next();
+  return res.status(401).json({ error: 'unauthorized' });
+}
+
 // ─── API Routes ─────────────────────────────────────────────
 
 // POST /api/heartbeat — health check writes heartbeat data
-app.post('/api/heartbeat', (req, res) => {
+app.post('/api/heartbeat', requireWriteAuth, (req, res) => {
   const { agents, source } = req.body;
   // agents: [{ name, status, pid? }]
   if (!Array.isArray(agents)) {
@@ -102,7 +129,7 @@ app.post('/api/heartbeat', (req, res) => {
 });
 
 // POST /api/event — log an event (offline, restart, etc.)
-app.post('/api/event', (req, res) => {
+app.post('/api/event', requireWriteAuth, (req, res) => {
   const { agent_name, event_type, details } = req.body;
   if (!agent_name || !event_type) {
     return res.status(400).json({ error: 'agent_name and event_type required' });
@@ -274,7 +301,7 @@ app.get('/api/daily-summary', (req, res) => {
 });
 
 // POST /api/check-now — trigger health-check.ps1 immediately
-app.post('/api/check-now', (req, res) => {
+app.post('/api/check-now', requireWriteAuth, (req, res) => {
   const now = Date.now();
   if (checkNowInFlight) {
     return res.status(429).json({ error: 'check already in flight' });
@@ -421,7 +448,7 @@ app.get('/api/agent/:name/session-state', (req, res) => {
 });
 
 // POST /api/agent/:name/fresh-start — set the one-shot flag
-app.post('/api/agent/:name/fresh-start', (req, res) => {
+app.post('/api/agent/:name/fresh-start', requireWriteAuth, (req, res) => {
   const stateDir = getAgentStateDir(req.params.name);
   if (!stateDir) return res.status(404).json({ error: 'unknown agent' });
 
@@ -436,7 +463,7 @@ app.post('/api/agent/:name/fresh-start', (req, res) => {
 });
 
 // DELETE /api/agent/:name/fresh-start — clear the flag
-app.delete('/api/agent/:name/fresh-start', (req, res) => {
+app.delete('/api/agent/:name/fresh-start', requireWriteAuth, (req, res) => {
   const stateDir = getAgentStateDir(req.params.name);
   if (!stateDir) return res.status(404).json({ error: 'unknown agent' });
 
@@ -457,7 +484,7 @@ app.delete('/api/agent/:name/fresh-start', (req, res) => {
 // Schema: see db/database.js (tg_messages table).
 
 // POST /api/tg-log — append one log entry
-app.post('/api/tg-log', (req, res) => {
+app.post('/api/tg-log', requireWriteAuth, (req, res) => {
   const {
     agent_name, direction, tool,
     chat_id, message_id, reply_to,
