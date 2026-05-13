@@ -205,6 +205,33 @@ app.get('/api/heatmap', (req, res) => {
   res.json(rows);
 });
 
+// GET /api/restart-loops?windowMinutes=30&threshold=3
+// Detect agents that are restart-looping. Counts `restart_attempt` events
+// per agent within the sliding window; any agent at or above the threshold
+// is flagged. The dashboard surfaces these in a red banner so operators see
+// pathological behaviour (today's Agent-01 incident: ~20 restarts over 2hr)
+// without having to scan the events log.
+app.get('/api/restart-loops', (req, res) => {
+  const windowMinutes = Math.max(parseInt(req.query.windowMinutes) || 30, 1);
+  const threshold = Math.max(parseInt(req.query.threshold) || 3, 2);
+  const db = getDb();
+
+  const rows = db.prepare(`
+    SELECT agent_name,
+           COUNT(*) as count,
+           MIN(timestamp) as since,
+           MAX(timestamp) as until
+    FROM events
+    WHERE event_type = 'restart_attempt'
+      AND timestamp >= datetime('now', '-${windowMinutes} minutes')
+    GROUP BY agent_name
+    HAVING count >= ?
+    ORDER BY count DESC
+  `).all(threshold);
+
+  res.json({ loops: rows, threshold, windowMinutes });
+});
+
 // GET /api/events?hours=48
 app.get('/api/events', (req, res) => {
   const hours = parseInt(req.query.hours) || 48;

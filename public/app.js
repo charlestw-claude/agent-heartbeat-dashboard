@@ -1316,6 +1316,36 @@ async function renderHeatmapChart() {
 
 // ─── Events Table ───────────────────────────────────────────
 
+async function renderRestartLoopBanner() {
+  const banner = document.getElementById('restartLoopBanner');
+  const content = document.getElementById('restartLoopBannerContent');
+  if (!banner || !content) return;
+
+  let data;
+  try {
+    data = await fetchJson('/api/restart-loops?windowMinutes=30&threshold=3');
+  } catch (e) {
+    banner.hidden = true;
+    return;
+  }
+
+  const loops = data?.loops || [];
+  if (loops.length === 0) {
+    banner.hidden = true;
+    return;
+  }
+
+  const win = data.windowMinutes;
+  const rows = loops
+    .map((l) => {
+      const name = String(l.agent_name).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+      return `<div class="banner-row"><strong>${name}</strong> · <span class="banner-count">${l.count}× restarts</span> in the last ${win} min</div>`;
+    })
+    .join('');
+  content.innerHTML = `<div class="banner-title">Restart loop detected</div>${rows}`;
+  banner.hidden = false;
+}
+
 async function renderEvents() {
   const events = await fetchJson('/api/events?hours=48');
   const tbody = document.querySelector('#eventsTable tbody');
@@ -1370,6 +1400,7 @@ async function refresh({ triggerCheck = false } = {}) {
       renderUptimeChart(),
       renderHeatmapChart(),
       renderEvents(),
+      renderRestartLoopBanner(),
     ]);
   } catch (err) {
     console.error('Refresh error:', err);

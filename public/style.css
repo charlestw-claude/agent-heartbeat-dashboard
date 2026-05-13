@@ -650,6 +650,49 @@ header h1 {
   border-radius: 6px;
 }
 
+/* Restart-loop banner — surfaces agents that exceeded the loop threshold */
+.restart-loop-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.22), rgba(239, 68, 68, 0.12));
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  color: #fecaca;
+  font-size: 14px;
+  animation: bannerPulse 2s ease-in-out infinite;
+}
+
+.restart-loop-banner[hidden] { display: none; }
+
+.restart-loop-banner .banner-icon {
+  font-size: 22px;
+  line-height: 1.1;
+  color: #fca5a5;
+  flex: 0 0 auto;
+}
+
+.restart-loop-banner .banner-title {
+  font-weight: 600;
+  color: #fee2e2;
+  margin-bottom: 4px;
+  letter-spacing: 0.02em;
+}
+
+.restart-loop-banner .banner-row { line-height: 1.5; }
+
+.restart-loop-banner .banner-count {
+  color: #fef2f2;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes bannerPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.0); }
+  50%      { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.15); }
+}
+
 /* Status Cards */
 .status-groups {
   display: flex;
