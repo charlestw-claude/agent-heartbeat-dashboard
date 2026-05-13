@@ -29,7 +29,7 @@ let checkNowInFlight = false;
 // which is where last_session.txt and fresh-start.flag live.
 const CHANNELS_ROOT = path.join(os.homedir(), '.claude', 'channels');
 const AGENT_CHANNEL_DIRS = {
-  'Claude-Agent-01': 'telegram',
+  'Claude-Agent-01': 'telegram-agent-01',
   'Claude-Agent-02': 'telegram-agent-02',
   'Claude-Agent-03': 'telegram-agent-03',
   'Claude-Agent-04': 'telegram-agent-04',
