@@ -447,6 +447,81 @@ app.get('/api/agent/:name/session-state', (req, res) => {
   res.json({ agent: req.params.name, fresh_start, last_session });
 });
 
+// GET /api/agent/:name/timeline — unified chronological view of events +
+// TG messages for one agent. Per-row `kind` lets the UI pick an icon and
+// colour; raw heartbeats are deliberately excluded (one per minute = noise),
+// the events table already captures the meaningful transitions.
+//
+// Query params:
+//   hours  — window size (default 24, clamped 1..168)
+//   kinds  — comma-separated subset of {event,tg_in,tg_out}; default all
+//   limit  — max rows returned (default 500, max 2000)
+app.get('/api/agent/:name/timeline', (req, res) => {
+  const agent = req.params.name;
+  const hours = Math.min(Math.max(parseInt(req.query.hours) || 24, 1), 168);
+  const limit = Math.min(parseInt(req.query.limit) || 500, 2000);
+  const kindsRaw = (req.query.kinds || 'event,tg_in,tg_out').split(',').map(s => s.trim());
+  const kinds = new Set(kindsRaw.filter(k => k === 'event' || k === 'tg_in' || k === 'tg_out'));
+  if (kinds.size === 0) return res.json([]);
+
+  try {
+    const db = getDb();
+    const rows = [];
+
+    if (kinds.has('event')) {
+      const ev = db.prepare(`
+        SELECT id, event_type, details, timestamp
+        FROM events
+        WHERE agent_name = ?
+          AND timestamp >= datetime('now', '-${hours} hours')
+        ORDER BY timestamp DESC
+        LIMIT ?
+      `).all(agent, limit);
+      for (const e of ev) {
+        rows.push({
+          ts: e.timestamp,
+          kind: 'event',
+          label: e.event_type,
+          detail: e.details || null,
+          ref: `event:${e.id}`,
+        });
+      }
+    }
+
+    if (kinds.has('tg_in') || kinds.has('tg_out')) {
+      const tg = db.prepare(`
+        SELECT id, direction, tool, chat_id, message_id, text_preview, timestamp
+        FROM tg_messages
+        WHERE agent_name = ?
+          AND timestamp >= datetime('now', '-${hours} hours')
+        ORDER BY timestamp DESC
+        LIMIT ?
+      `).all(agent, limit);
+      for (const m of tg) {
+        const kind = m.direction === 'in' ? 'tg_in' : 'tg_out';
+        if (!kinds.has(kind)) continue;
+        rows.push({
+          ts: m.timestamp,
+          kind,
+          label: m.tool || (m.direction === 'in' ? 'inbound' : 'reply'),
+          detail: m.text_preview || null,
+          chat_id: m.chat_id || null,
+          message_id: m.message_id || null,
+          ref: `tg:${m.id}`,
+        });
+      }
+    }
+
+    // Merge-sort by timestamp desc. Cap at `limit` after combining so a busy
+    // TG chat doesn't crowd events out.
+    rows.sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
+    res.json(rows.slice(0, limit));
+  } catch (e) {
+    console.error(`timeline query failed for ${agent}:`, e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/agent/:name/fresh-start — set the one-shot flag
 app.post('/api/agent/:name/fresh-start', requireWriteAuth, (req, res) => {
   const stateDir = getAgentStateDir(req.params.name);

@@ -1421,6 +1421,9 @@ document.getElementById('statusCards')?.addEventListener('click', async (e) => {
   const name = btn.dataset.agentName;
   const currentlyFresh = btn.dataset.fresh === '1';
   if (!name) return;
+  // Stop the click from bubbling to the card-level handler that opens the
+  // timeline — toggling fresh-start should not also open the modal.
+  e.stopPropagation();
 
   btn.disabled = true;
   try {
@@ -1433,6 +1436,188 @@ document.getElementById('statusCards')?.addEventListener('click', async (e) => {
     btn.disabled = false;
   }
 });
+
+// ─── Per-agent activity timeline modal (C-7) ───────────────────────────
+// Click a status card → modal opens with chronological events + TG
+// messages for that agent. Filter chips and a time-range select narrow
+// the view. Backdrop click / Esc / × button close.
+
+const timelineState = {
+  agent: null,
+  hours: 24,
+  kinds: new Set(['event', 'tg_in', 'tg_out']),
+};
+
+function findAgentNameFromCard(card) {
+  // The card body has no agent_name attribute itself — the next-start button
+  // does. Read it off the button when present, otherwise fall back to
+  // reconstructing from the displayed name.
+  const ns = card.querySelector('.card-next-start');
+  if (ns && ns.dataset.agentName) return ns.dataset.agentName;
+  const nameEl = card.querySelector('.card-name');
+  if (!nameEl) return null;
+  const txt = nameEl.textContent.trim();
+  // renderStatusCards stripped the "Claude-" prefix for display; some
+  // agents (Guest-Agent) keep the literal text. Probe both forms against
+  // the known group list.
+  if (txt.startsWith('Agent-') || txt === 'Deloitte' || txt === 'Quant' || txt === 'Quant-2') {
+    return 'Claude-' + txt;
+  }
+  return txt;
+}
+
+function fmtTimelineTs(iso) {
+  if (!iso) return '';
+  // sqlite returns "YYYY-MM-DD HH:MM:SS" in UTC; the rest of the dashboard
+  // treats those as UTC and renders in the viewer's local TZ.
+  const ms = isoToMs(iso);
+  if (!ms) return iso;
+  const d = new Date(ms);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function iconForKind(kind, label) {
+  if (kind === 'tg_in') return '←';
+  if (kind === 'tg_out') return '→';
+  if (kind === 'event') {
+    if (label && label.startsWith('restart_success')) return '✓';
+    if (label && label.startsWith('restart_attempt')) return '↻';
+    if (label && label.startsWith('restart_deferred')) return '⏸';
+    if (label && (label === 'offline' || label.endsWith('_dead'))) return '×';
+    return '•';
+  }
+  return '•';
+}
+
+function eventClassSuffix(label) {
+  if (!label) return '';
+  // Suffix the row class so CSS can tint restart success vs failure etc.
+  if (label.startsWith('restart_')) return ' evt-' + label;
+  return '';
+}
+
+async function fetchTimeline() {
+  const { agent, hours, kinds } = timelineState;
+  if (!agent) return [];
+  const kindsParam = Array.from(kinds).join(',') || 'event';
+  const url = `/api/agent/${encodeURIComponent(agent)}/timeline?hours=${hours}&kinds=${encodeURIComponent(kindsParam)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+function renderTimelineRows(rows) {
+  const body = document.getElementById('timelineBody');
+  if (!body) return;
+  if (!rows.length) {
+    body.innerHTML = '<div class="timeline-empty">No activity in this window.</div>';
+    return;
+  }
+  const escapeHtml = (s) =>
+    String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  body.innerHTML = rows
+    .map((r) => {
+      const cls = `timeline-row kind-${r.kind}${r.kind === 'event' ? eventClassSuffix(r.label) : ''}`;
+      const icon = iconForKind(r.kind, r.label);
+      const ts = fmtTimelineTs(r.ts);
+      const label = escapeHtml(r.label || '');
+      const detail = r.detail ? `<div class="timeline-detail">${escapeHtml(r.detail)}</div>` : '';
+      return `
+        <div class="${cls}">
+          <span class="timeline-ts">${ts}</span>
+          <span class="timeline-kind" aria-hidden="true">${icon}</span>
+          <div class="timeline-content">
+            <div class="timeline-label">${label}</div>
+            ${detail}
+          </div>
+        </div>`;
+    })
+    .join('');
+}
+
+async function refreshTimeline() {
+  const body = document.getElementById('timelineBody');
+  const meta = document.getElementById('timelineMeta');
+  if (body) body.innerHTML = '<div class="timeline-loading">Loading...</div>';
+  try {
+    const rows = await fetchTimeline();
+    renderTimelineRows(rows);
+    if (meta) {
+      const { hours, agent } = timelineState;
+      meta.textContent = `${agent} · last ${hours}h · ${rows.length} ${rows.length === 1 ? 'entry' : 'entries'}`;
+    }
+  } catch (err) {
+    if (body) body.innerHTML = `<div class="timeline-empty">Failed to load: ${err.message}</div>`;
+  }
+}
+
+function openTimeline(agentName) {
+  const modal = document.getElementById('timelineModal');
+  if (!modal) return;
+  timelineState.agent = agentName;
+  document.getElementById('timelineTitle').textContent = `${agentName} · Activity`;
+  modal.hidden = false;
+  document.body.style.overflow = 'hidden';
+  refreshTimeline();
+}
+
+function closeTimeline() {
+  const modal = document.getElementById('timelineModal');
+  if (!modal) return;
+  modal.hidden = true;
+  document.body.style.overflow = '';
+}
+
+// Card click → open timeline. Skipped when the click landed on a control
+// inside the card (the next-start button already stops propagation, but
+// extra defence here keeps future controls safe by default).
+document.getElementById('statusCards')?.addEventListener('click', (e) => {
+  if (e.target.closest('.card-next-start')) return;
+  const card = e.target.closest('.status-card');
+  if (!card) return;
+  const name = findAgentNameFromCard(card);
+  if (name) openTimeline(name);
+});
+
+// Close handlers (backdrop, × button, Esc).
+document.getElementById('timelineModal')?.addEventListener('click', (e) => {
+  if (e.target.closest('[data-close="1"]')) closeTimeline();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const modal = document.getElementById('timelineModal');
+    if (modal && !modal.hidden) closeTimeline();
+  }
+});
+
+// Filter chips.
+document.querySelectorAll('.timeline-chip').forEach((chip) => {
+  chip.addEventListener('click', () => {
+    const kind = chip.dataset.kind;
+    if (!kind) return;
+    if (chip.classList.contains('active')) {
+      // Don't allow turning off the last active chip — at least one kind
+      // must remain selected (an empty kinds set returns []).
+      if (timelineState.kinds.size <= 1) return;
+      chip.classList.remove('active');
+      timelineState.kinds.delete(kind);
+    } else {
+      chip.classList.add('active');
+      timelineState.kinds.add(kind);
+    }
+    refreshTimeline();
+  });
+});
+
+// Time range select.
+document.getElementById('timelineHours')?.addEventListener('change', (e) => {
+  timelineState.hours = parseInt(e.target.value, 10) || 24;
+  refreshTimeline();
+});
+
+// Manual refresh button.
+document.getElementById('timelineRefresh')?.addEventListener('click', () => refreshTimeline());
 
 refresh();
 setInterval(() => refresh(), REFRESH_INTERVAL);
