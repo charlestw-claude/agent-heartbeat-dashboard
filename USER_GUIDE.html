@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<title>USER GUIDE — agent-heartbeat-dashboard v1.6.0</title>
+<title>USER GUIDE — agent-heartbeat-dashboard v1.7.0</title>
 <style>
   body { font-family: -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif; max-width: 920px; margin: 2rem auto; padding: 0 1.5rem; color: #1f2937; line-height: 1.65; }
   h1 { border-bottom: 2px solid #0ea5e9; padding-bottom: 0.4rem; }
@@ -30,8 +30,8 @@
 <h1>USER GUIDE — agent-heartbeat-dashboard</h1>
 
 <blockquote>
-  適用版本：v1.6.0<br>
-  最後更新：2026-04-25
+  適用版本：v1.7.0<br>
+  最後更新：2026-05-13
 </blockquote>
 
 <h2 id="toc">目錄</h2>
@@ -43,6 +43,9 @@
   <li><a href="#agent">Agent Status 區塊</a></li>
   <li><a href="#vm">VM Realtime 區塊</a></li>
   <li><a href="#sub">Claude Subscription 區塊</a></li>
+  <li><a href="#conf">Agent 設定來源（agents.conf）</a></li>
+  <li><a href="#auth">寫入端驗證（DASHBOARD_SECRET）</a></li>
+  <li><a href="#api">API 端點速覽</a></li>
   <li><a href="#responsive">響應式行為</a></li>
   <li><a href="#faq">常見問題（FAQ）</a></li>
   <li><a href="#trouble">疑難排解</a></li>
@@ -103,9 +106,31 @@ Stop-Process -Id &lt;PID&gt; -Force</code></pre>
 <p>點擊頁首按鈕會：</p>
 <ol>
   <li>觸發 <code>POST /api/check-now</code>，呼叫 <code>health-check.ps1</code></li>
-  <li>等待結果回傳後重新渲染畫面（約 2–5 秒）</li>
+  <li>等待結果回傳後重新渲染畫面(約 2–5 秒)</li>
 </ol>
 <blockquote>透過按鈕觸發的健康檢查會被標記為 <code>source=manual</code>，不會列入 Daily Routine 統計。</blockquote>
+
+<h3>Activity Timeline Modal（v1.7.0+）</h3>
+<p>點任一 agent 狀態卡，即可打開該 agent 的活動 timeline modal：</p>
+<ul>
+  <li>預設顯示<strong>過去 24 小時</strong>的 events 與 Telegram 進出訊息（chronological）</li>
+  <li>時段可調整：1 h / 6 h / 24 h / 7 d</li>
+  <li>Kind filter：<code>event</code> / <code>inbound</code> / <code>outbound</code> 三種，至少需保留一個</li>
+  <li>Heartbeat 事件已預先排除，避免洗版</li>
+</ul>
+<p>對應 API：<code>GET /api/agent/:name/timeline?hours=&amp;kinds=&amp;limit=</code></p>
+
+<h3>Restart-loop Banner（v1.7.0+）</h3>
+<p>當 dashboard 偵測到某個 agent 在短時間內重啟頻率超過閾值，會在頁首顯示<strong>紅色 banner</strong> 警示，便於即時發現異常迴圈。</p>
+
+<h3>Per-agent Fresh-start Toggle（v1.7.0+）</h3>
+<p>每張 agent 卡片新增一個按鈕，可切換<strong>下次啟動是否走 fresh-start</strong>：</p>
+<ul>
+  <li>預設：透過 <code>last_session.txt</code> resume 上次對話</li>
+  <li>Fresh-start：忽略 last_session.txt，下次以全新 session 啟動</li>
+  <li>對應 API：<code>POST /api/agent/:name/fresh-start</code>、<code>DELETE /api/agent/:name/fresh-start</code></li>
+  <li>查詢狀態：<code>GET /api/agent/:name/session-state</code></li>
+</ul>
 
 <h2 id="vm"><a href="#vm">VM Realtime 區塊</a></h2>
 <p>透過 WebSocket（<code>/ws</code>）接收即時 metrics：</p>
@@ -168,6 +193,61 @@ Stop-Process -Id &lt;PID&gt; -Force</code></pre>
   <li><strong>Session reset hour 直方圖</strong>：所有歷史 session 的開始時段分布</li>
   <li><strong>24 小時時段強度</strong>：依每小時平均活動量分為 5 級色階（Quiet / Normal / Active / Peak / Maxed）</li>
 </ul>
+
+<h2 id="conf"><a href="#conf">Agent 設定來源（agents.conf）</a></h2>
+<p>自 <strong>v1.7.0</strong> 起，dashboard 的 agent 清單與顏色不再內建硬編，而是從 vm-agent profile 的設定檔派生：</p>
+<pre><code>profiles/vm-agent/config/agents/agents.conf</code></pre>
+<p>TSV 格式（4 欄，以 tab 分隔）：</p>
+<table>
+  <thead><tr><th>欄位</th><th>說明</th></tr></thead>
+  <tbody>
+    <tr><td><code>name</code></td><td>agent 名稱（如 <code>Claude-Agent-01</code>）</td></tr>
+    <tr><td><code>channel_dir</code></td><td>對應的 Telegram channel 子目錄</td></tr>
+    <tr><td><code>token_env</code></td><td>bot token 環境變數名稱</td></tr>
+    <tr><td><code>color</code></td><td>卡片色票（hex，如 <code>#3b82f6</code>）</td></tr>
+  </tbody>
+</table>
+<p>啟動時 <code>agents-conf.js</code> 一次性讀入並 cache。<code>server.js</code>、<code>metrics/collector.js</code>、前端 <code>public/app.js</code> 全部從這份 conf 派生資料，避免清單在多處不同步。</p>
+<p>新增 / 修改 agent 時，<strong>只需要編輯 agents.conf 一個檔案</strong>（搭配環境變數），dashboard 與 health-check.ps1 會自動跟上。</p>
+<p>前端取色用的 endpoint：<code>GET /api/agents-meta</code> → <code>[{name, color}]</code></p>
+
+<h2 id="auth"><a href="#auth">寫入端驗證（DASHBOARD_SECRET）</a></h2>
+<p>自 <strong>v1.7.0</strong> 起，dashboard server 採取以下安全策略：</p>
+<ol>
+  <li><strong>僅綁定 <code>127.0.0.1</code></strong>：不再聽 <code>0.0.0.0</code>，LAN 內其他裝置無法直接打 API</li>
+  <li><strong>寫入端驗證（<code>requireWriteAuth</code>）</strong>：所有 <code>POST</code> / <code>DELETE</code> 端點受保護
+    <ul>
+      <li>Loopback (<code>127.0.0.1</code> / <code>::1</code> / <code>::ffff:127.0.0.1</code>)：免驗證</li>
+      <li>非 loopback：需在 header 帶 <code>X-Dashboard-Secret</code>，值對應到 <code>DASHBOARD_SECRET</code> 環境變數</li>
+      <li>若 <code>DASHBOARD_SECRET</code> 未設置：fallback 為「<strong>僅接受 loopback</strong>」</li>
+    </ul>
+  </li>
+</ol>
+<p>讀取端（<code>GET</code>）不受影響。</p>
+<blockquote><strong>正常使用情境下無需任何設定</strong> — agent .bat 與健康檢查腳本都在同一台 VM 上以 loopback 連線，會自動通過。<code>DASHBOARD_SECRET</code> 僅在有從非 loopback 來源寫入的需求時才需要設定。</blockquote>
+
+<h2 id="api"><a href="#api">API 端點速覽</a></h2>
+<table>
+  <thead><tr><th>Method</th><th>Path</th><th>說明</th></tr></thead>
+  <tbody>
+    <tr><td><code>GET</code></td><td><code>/api/agents-meta</code></td><td>取得 agent 名單與色票（前端啟動時呼叫）</td></tr>
+    <tr><td><code>GET</code></td><td><code>/api/agents</code></td><td>agent 狀態快照（含 heartbeat、MCP、模型）</td></tr>
+    <tr><td><code>GET</code></td><td><code>/api/agent/:name/timeline</code></td><td>取 agent timeline（events + TG 進出）</td></tr>
+    <tr><td><code>GET</code></td><td><code>/api/agent/:name/session-state</code></td><td>取 last_session / fresh_start 旗標</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/agent/:name/fresh-start</code></td><td>設定下次啟動走 fresh-start</td></tr>
+    <tr><td><code>DELETE</code></td><td><code>/api/agent/:name/fresh-start</code></td><td>取消 fresh-start 設定</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/heartbeat</code></td><td>agent / health-check 上報 heartbeat</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/event</code></td><td>上報 agent event（啟動、停止、crash 等）</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/check-now</code></td><td>觸發即時 health-check</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/tg-log</code></td><td>寫入 TG 進出訊息 log</td></tr>
+    <tr><td><code>GET</code></td><td><code>/api/tg-log</code></td><td>查詢 TG 訊息 log</td></tr>
+    <tr><td><code>GET</code></td><td><code>/api/claude/usage</code></td><td>ClaudeMonitor 用量 proxy</td></tr>
+    <tr><td><code>GET</code></td><td><code>/api/claude/stats</code></td><td>ClaudeMonitor 30 天統計 proxy</td></tr>
+    <tr><td><code>GET</code></td><td><code>/api/claude/analysis</code></td><td>ClaudeMonitor 14 天聚合 proxy</td></tr>
+    <tr><td><code>WS</code></td><td><code>/ws</code></td><td>VM realtime metrics</td></tr>
+  </tbody>
+</table>
+<p>寫入類端點受 <code>requireWriteAuth</code> 保護（見上一節）。</p>
 
 <h2 id="responsive"><a href="#responsive">響應式行為</a></h2>
 <ul>

@@ -26,6 +26,12 @@
       </div>
     </header>
 
+    <!-- Restart-loop banner (hidden unless an agent crosses the threshold) -->
+    <section id="restartLoopBanner" class="restart-loop-banner" hidden>
+      <span class="banner-icon" aria-hidden="true">⚠</span>
+      <div class="banner-content" id="restartLoopBannerContent"></div>
+    </section>
+
     <!-- Status Cards (grouped) -->
     <section class="status-groups" id="statusCards">
       <div class="loading">Loading...</div>
@@ -241,6 +247,38 @@
         </table>
       </div>
     </section>
+  </div>
+
+  <!-- Per-agent timeline modal — opens when a status card is clicked.
+       Backdrop click + Esc close. Filter chips toggle which event kinds
+       are shown; time range selects the lookback window. -->
+  <div id="timelineModal" class="timeline-modal" hidden>
+    <div class="timeline-backdrop" data-close="1"></div>
+    <div class="timeline-panel" role="dialog" aria-labelledby="timelineTitle" aria-modal="true">
+      <header class="timeline-header">
+        <h2 id="timelineTitle" class="timeline-title">Activity Timeline</h2>
+        <div class="timeline-controls">
+          <select id="timelineHours" class="timeline-select" aria-label="Time range">
+            <option value="1">Last 1h</option>
+            <option value="6">Last 6h</option>
+            <option value="24" selected>Last 24h</option>
+            <option value="72">Last 3d</option>
+            <option value="168">Last 7d</option>
+          </select>
+          <div class="timeline-filters" role="group" aria-label="Filter event kinds">
+            <button class="timeline-chip active" data-kind="event">Events</button>
+            <button class="timeline-chip active" data-kind="tg_in">Inbound</button>
+            <button class="timeline-chip active" data-kind="tg_out">Outbound</button>
+          </div>
+          <button id="timelineRefresh" class="timeline-icon-btn" title="Refresh" aria-label="Refresh">↻</button>
+          <button id="timelineClose" class="timeline-icon-btn" title="Close" aria-label="Close" data-close="1">×</button>
+        </div>
+      </header>
+      <div class="timeline-meta" id="timelineMeta">--</div>
+      <div class="timeline-body" id="timelineBody">
+        <div class="timeline-loading">Loading...</div>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>

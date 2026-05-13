@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const http = require('http');
+const fs = require('fs');
+const os = require('os');
 const { spawn } = require('child_process');
 const { initDb, getDb } = require('./db/database');
 const { initMetricsSchema } = require('./db/metrics-schema');
@@ -12,6 +14,7 @@ const diskCaches = require('./metrics/disk-caches');
 const claudeUsage = require('./metrics/claude-usage');
 const agentModels = require('./metrics/agent-models');
 const wsHub = require('./metrics/ws');
+const { readAgentsConf } = require('./agents-conf');
 
 const app = express();
 const PORT = process.env.PORT || 3900;
@@ -22,6 +25,27 @@ const CHECK_NOW_TIMEOUT_MS = 60_000;
 let lastCheckNowAt = 0;
 let checkNowInFlight = false;
 
+// Agent metadata is sourced from agents.conf — the same file health-check.ps1
+// and Claude-Start-All.bat read. Loaded once at boot; restart the dashboard
+// after editing agents.conf to pick up changes.
+const CHANNELS_ROOT = path.join(os.homedir(), '.claude', 'channels');
+let AGENT_ROWS;
+try {
+  AGENT_ROWS = readAgentsConf();
+  console.log(`[ok] loaded ${AGENT_ROWS.length} agents from agents.conf`);
+} catch (e) {
+  console.error('[fatal] failed to load agents.conf:', e.message);
+  process.exit(2);
+}
+const AGENT_CHANNEL_DIRS = Object.fromEntries(
+  AGENT_ROWS.filter((r) => r.channel_dir).map((r) => [r.name, r.channel_dir])
+);
+
+function getAgentStateDir(name) {
+  const dir = AGENT_CHANNEL_DIRS[name];
+  return dir ? path.join(CHANNELS_ROOT, dir) : null;
+}
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -30,10 +54,37 @@ app.use(express.static(path.join(__dirname, 'public')));
 initDb();
 initMetricsSchema();
 
+// ─── Write-endpoint auth ─────────────────────────────────────
+// Defence-in-depth on top of the LAN firewall: writes from a non-loopback
+// peer must present X-Dashboard-Secret. Loopback (127.0.0.1 / ::1) is exempt
+// because the only writers today — health-check.ps1, the TG plugin, the
+// outbound hook, and the dashboard's own browser UI — all run on this host.
+// If the firewall ever opens or the dashboard moves off-VM, set the env var
+// and have callers add the header (no callers need changes until then).
+const DASHBOARD_SECRET = process.env.DASHBOARD_SECRET || null;
+if (!DASHBOARD_SECRET) {
+  console.warn('[warn] DASHBOARD_SECRET unset — writes accepted from loopback only');
+} else {
+  console.log('[ok] DASHBOARD_SECRET set — non-loopback writes require X-Dashboard-Secret header');
+}
+
+function isLoopbackPeer(req) {
+  // express default (trust proxy off): req.ip is the socket peer. On Windows
+  // node binds dual-stack so IPv4 localhost arrives as ::ffff:127.0.0.1.
+  const ip = req.ip || (req.connection && req.connection.remoteAddress) || '';
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+}
+
+function requireWriteAuth(req, res, next) {
+  if (isLoopbackPeer(req)) return next();
+  if (DASHBOARD_SECRET && req.get('X-Dashboard-Secret') === DASHBOARD_SECRET) return next();
+  return res.status(401).json({ error: 'unauthorized' });
+}
+
 // ─── API Routes ─────────────────────────────────────────────
 
 // POST /api/heartbeat — health check writes heartbeat data
-app.post('/api/heartbeat', (req, res) => {
+app.post('/api/heartbeat', requireWriteAuth, (req, res) => {
   const { agents, source } = req.body;
   // agents: [{ name, status, pid? }]
   if (!Array.isArray(agents)) {
@@ -71,13 +122,15 @@ app.post('/api/heartbeat', (req, res) => {
         })),
       },
     });
-  } catch {}
+  } catch (e) {
+    console.error('WS heartbeat broadcast failed:', e.message);
+  }
 
   res.json({ ok: true, count: agents.length, source: src });
 });
 
 // POST /api/event — log an event (offline, restart, etc.)
-app.post('/api/event', (req, res) => {
+app.post('/api/event', requireWriteAuth, (req, res) => {
   const { agent_name, event_type, details } = req.body;
   if (!agent_name || !event_type) {
     return res.status(400).json({ error: 'agent_name and event_type required' });
@@ -89,6 +142,14 @@ app.post('/api/event', (req, res) => {
   ).run(agent_name, event_type, details || null);
 
   res.json({ ok: true });
+});
+
+// GET /api/agents-meta — agents.conf snapshot (name + color, no secrets)
+// Frontend uses this to derive the colour legend instead of carrying a
+// duplicate hardcoded list. token_env / channel_dir intentionally omitted
+// from the browser-facing payload.
+app.get('/api/agents-meta', (req, res) => {
+  res.json(AGENT_ROWS.map((r) => ({ name: r.name, color: r.color })));
 });
 
 // GET /api/status — current status of all agents (latest heartbeat each)
@@ -180,6 +241,33 @@ app.get('/api/heatmap', (req, res) => {
   res.json(rows);
 });
 
+// GET /api/restart-loops?windowMinutes=30&threshold=3
+// Detect agents that are restart-looping. Counts `restart_attempt` events
+// per agent within the sliding window; any agent at or above the threshold
+// is flagged. The dashboard surfaces these in a red banner so operators see
+// pathological behaviour (today's Agent-01 incident: ~20 restarts over 2hr)
+// without having to scan the events log.
+app.get('/api/restart-loops', (req, res) => {
+  const windowMinutes = Math.max(parseInt(req.query.windowMinutes) || 30, 1);
+  const threshold = Math.max(parseInt(req.query.threshold) || 3, 2);
+  const db = getDb();
+
+  const rows = db.prepare(`
+    SELECT agent_name,
+           COUNT(*) as count,
+           MIN(timestamp) as since,
+           MAX(timestamp) as until
+    FROM events
+    WHERE event_type = 'restart_attempt'
+      AND timestamp >= datetime('now', '-${windowMinutes} minutes')
+    GROUP BY agent_name
+    HAVING count >= ?
+    ORDER BY count DESC
+  `).all(threshold);
+
+  res.json({ loops: rows, threshold, windowMinutes });
+});
+
 // GET /api/events?hours=48
 app.get('/api/events', (req, res) => {
   const hours = parseInt(req.query.hours) || 48;
@@ -222,7 +310,7 @@ app.get('/api/daily-summary', (req, res) => {
 });
 
 // POST /api/check-now — trigger health-check.ps1 immediately
-app.post('/api/check-now', (req, res) => {
+app.post('/api/check-now', requireWriteAuth, (req, res) => {
   const now = Date.now();
   if (checkNowInFlight) {
     return res.status(429).json({ error: 'check already in flight' });
@@ -342,6 +430,214 @@ app.get('/api/metrics/hourly', (req, res) => {
   res.json(rows);
 });
 
+// ─── Per-agent session control ──────────────────────────────
+// Reads/writes files under %USERPROFILE%\.claude\channels\<dir>\:
+//   - fresh-start.flag  : if present, the agent's .bat does a clean start
+//                         and consumes the flag (one-shot)
+//   - last_session.txt  : the last Claude Code session_id; the .bat passes
+//                         this to `claude --resume` on restart
+
+// GET /api/agent/:name/session-state — current flag + last session id
+app.get('/api/agent/:name/session-state', (req, res) => {
+  const stateDir = getAgentStateDir(req.params.name);
+  if (!stateDir) return res.status(404).json({ error: 'unknown agent' });
+
+  const flagPath = path.join(stateDir, 'fresh-start.flag');
+  const sessionPath = path.join(stateDir, 'last_session.txt');
+
+  const fresh_start = fs.existsSync(flagPath);
+  let last_session = null;
+  try {
+    if (fs.existsSync(sessionPath)) {
+      last_session = fs.readFileSync(sessionPath, 'utf8').trim() || null;
+    }
+  } catch {}
+
+  res.json({ agent: req.params.name, fresh_start, last_session });
+});
+
+// GET /api/agent/:name/timeline — unified chronological view of events +
+// TG messages for one agent. Per-row `kind` lets the UI pick an icon and
+// colour; raw heartbeats are deliberately excluded (one per minute = noise),
+// the events table already captures the meaningful transitions.
+//
+// Query params:
+//   hours  — window size (default 24, clamped 1..168)
+//   kinds  — comma-separated subset of {event,tg_in,tg_out}; default all
+//   limit  — max rows returned (default 500, max 2000)
+app.get('/api/agent/:name/timeline', (req, res) => {
+  const agent = req.params.name;
+  const hours = Math.min(Math.max(parseInt(req.query.hours) || 24, 1), 168);
+  const limit = Math.min(parseInt(req.query.limit) || 500, 2000);
+  const kindsRaw = (req.query.kinds || 'event,tg_in,tg_out').split(',').map(s => s.trim());
+  const kinds = new Set(kindsRaw.filter(k => k === 'event' || k === 'tg_in' || k === 'tg_out'));
+  if (kinds.size === 0) return res.json([]);
+
+  try {
+    const db = getDb();
+    const rows = [];
+
+    if (kinds.has('event')) {
+      const ev = db.prepare(`
+        SELECT id, event_type, details, timestamp
+        FROM events
+        WHERE agent_name = ?
+          AND timestamp >= datetime('now', '-${hours} hours')
+        ORDER BY timestamp DESC
+        LIMIT ?
+      `).all(agent, limit);
+      for (const e of ev) {
+        rows.push({
+          ts: e.timestamp,
+          kind: 'event',
+          label: e.event_type,
+          detail: e.details || null,
+          ref: `event:${e.id}`,
+        });
+      }
+    }
+
+    if (kinds.has('tg_in') || kinds.has('tg_out')) {
+      const tg = db.prepare(`
+        SELECT id, direction, tool, chat_id, message_id, text_preview, timestamp
+        FROM tg_messages
+        WHERE agent_name = ?
+          AND timestamp >= datetime('now', '-${hours} hours')
+        ORDER BY timestamp DESC
+        LIMIT ?
+      `).all(agent, limit);
+      for (const m of tg) {
+        const kind = m.direction === 'in' ? 'tg_in' : 'tg_out';
+        if (!kinds.has(kind)) continue;
+        rows.push({
+          ts: m.timestamp,
+          kind,
+          label: m.tool || (m.direction === 'in' ? 'inbound' : 'reply'),
+          detail: m.text_preview || null,
+          chat_id: m.chat_id || null,
+          message_id: m.message_id || null,
+          ref: `tg:${m.id}`,
+        });
+      }
+    }
+
+    // Merge-sort by timestamp desc. Cap at `limit` after combining so a busy
+    // TG chat doesn't crowd events out.
+    rows.sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
+    res.json(rows.slice(0, limit));
+  } catch (e) {
+    console.error(`timeline query failed for ${agent}:`, e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/agent/:name/fresh-start — set the one-shot flag
+app.post('/api/agent/:name/fresh-start', requireWriteAuth, (req, res) => {
+  const stateDir = getAgentStateDir(req.params.name);
+  if (!stateDir) return res.status(404).json({ error: 'unknown agent' });
+
+  try {
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, 'fresh-start.flag'), new Date().toISOString());
+    res.json({ ok: true, agent: req.params.name, fresh_start: true });
+  } catch (e) {
+    console.error(`fresh-start set failed for ${req.params.name}:`, e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/agent/:name/fresh-start — clear the flag
+app.delete('/api/agent/:name/fresh-start', requireWriteAuth, (req, res) => {
+  const stateDir = getAgentStateDir(req.params.name);
+  if (!stateDir) return res.status(404).json({ error: 'unknown agent' });
+
+  try {
+    const flagPath = path.join(stateDir, 'fresh-start.flag');
+    if (fs.existsSync(flagPath)) fs.unlinkSync(flagPath);
+    res.json({ ok: true, agent: req.params.name, fresh_start: false });
+  } catch (e) {
+    console.error(`fresh-start clear failed for ${req.params.name}:`, e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Centralised TG message log ─────────────────────────────────
+// Cross-agent visibility for Manager-agent dispatch + audit. Agents POST every
+// outbound TG action (reply / react / edit_message) via a PostToolUse hook;
+// the central log is queryable by agent and time range.
+// Schema: see db/database.js (tg_messages table).
+
+// POST /api/tg-log — append one log entry
+app.post('/api/tg-log', requireWriteAuth, (req, res) => {
+  const {
+    agent_name, direction, tool,
+    chat_id, message_id, reply_to,
+    text_preview, session_id, raw_response,
+  } = req.body || {};
+
+  if (!agent_name || !direction) {
+    return res.status(400).json({ error: 'agent_name and direction required' });
+  }
+  if (direction !== 'in' && direction !== 'out') {
+    return res.status(400).json({ error: "direction must be 'in' or 'out'" });
+  }
+
+  try {
+    const db = getDb();
+    const info = db.prepare(`
+      INSERT INTO tg_messages (
+        agent_name, direction, tool, chat_id, message_id,
+        reply_to, text_preview, session_id, raw_response
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      agent_name,
+      direction,
+      tool || null,
+      chat_id ? String(chat_id) : null,
+      message_id ? String(message_id) : null,
+      reply_to ? String(reply_to) : null,
+      text_preview || null,
+      session_id || null,
+      raw_response || null
+    );
+    res.json({ ok: true, id: info.lastInsertRowid });
+  } catch (e) {
+    console.error(`tg-log write failed (agent=${agent_name} dir=${direction}):`, e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/tg-log?hours=24&agent=Claude-Agent-03&direction=out&limit=200
+app.get('/api/tg-log', (req, res) => {
+  const hours = parseInt(req.query.hours) || 24;
+  const limit = Math.min(parseInt(req.query.limit) || 200, 1000);
+  const agent = req.query.agent;
+  const direction = req.query.direction;
+
+  let query = `
+    SELECT id, agent_name, direction, tool, chat_id, message_id,
+           reply_to, text_preview, session_id, raw_response, timestamp
+    FROM tg_messages
+    WHERE timestamp >= datetime('now', '-${hours} hours')
+  `;
+  const params = [];
+
+  if (agent) {
+    query += ' AND agent_name = ?';
+    params.push(agent);
+  }
+  if (direction === 'in' || direction === 'out') {
+    query += ' AND direction = ?';
+    params.push(direction);
+  }
+
+  query += ' ORDER BY timestamp DESC LIMIT ?';
+  params.push(limit);
+
+  const rows = getDb().prepare(query).all(...params);
+  res.json(rows);
+});
+
 // Fallback: serve index.html for SPA
 app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -350,8 +646,8 @@ app.get('/{*path}', (req, res) => {
 const server = http.createServer(app);
 wsHub.attach(server);
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Agent Heartbeat Dashboard running on http://0.0.0.0:${PORT}`);
+server.listen(PORT, '127.0.0.1', () => {
+  console.log(`Agent Heartbeat Dashboard running on http://127.0.0.1:${PORT}`);
   collector.start();
   rollup.start();
   archive.start();
