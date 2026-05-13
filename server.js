@@ -14,6 +14,7 @@ const diskCaches = require('./metrics/disk-caches');
 const claudeUsage = require('./metrics/claude-usage');
 const agentModels = require('./metrics/agent-models');
 const wsHub = require('./metrics/ws');
+const { readAgentsConf } = require('./agents-conf');
 
 const app = express();
 const PORT = process.env.PORT || 3900;
@@ -24,21 +25,21 @@ const CHECK_NOW_TIMEOUT_MS = 60_000;
 let lastCheckNowAt = 0;
 let checkNowInFlight = false;
 
-// Agent name -> channel state dir (mirrors health-check.ps1's $agentChannelDirMap).
-// The .bat files set TELEGRAM_STATE_DIR to %USERPROFILE%\.claude\channels\<value>,
-// which is where last_session.txt and fresh-start.flag live.
+// Agent metadata is sourced from agents.conf — the same file health-check.ps1
+// and Claude-Start-All.bat read. Loaded once at boot; restart the dashboard
+// after editing agents.conf to pick up changes.
 const CHANNELS_ROOT = path.join(os.homedir(), '.claude', 'channels');
-const AGENT_CHANNEL_DIRS = {
-  'Claude-Agent-01': 'telegram-agent-01',
-  'Claude-Agent-02': 'telegram-agent-02',
-  'Claude-Agent-03': 'telegram-agent-03',
-  'Claude-Agent-04': 'telegram-agent-04',
-  'Claude-Agent-05': 'telegram-agent-05',
-  'Claude-Deloitte': 'telegram-deloitte',
-  'Claude-Quant': 'telegram-quant',
-  'Claude-Quant-2': 'telegram-quant-2',
-  'Guest-Agent': 'telegram-guest-agent',
-};
+let AGENT_ROWS;
+try {
+  AGENT_ROWS = readAgentsConf();
+  console.log(`[ok] loaded ${AGENT_ROWS.length} agents from agents.conf`);
+} catch (e) {
+  console.error('[fatal] failed to load agents.conf:', e.message);
+  process.exit(2);
+}
+const AGENT_CHANNEL_DIRS = Object.fromEntries(
+  AGENT_ROWS.filter((r) => r.channel_dir).map((r) => [r.name, r.channel_dir])
+);
 
 function getAgentStateDir(name) {
   const dir = AGENT_CHANNEL_DIRS[name];
@@ -141,6 +142,14 @@ app.post('/api/event', requireWriteAuth, (req, res) => {
   ).run(agent_name, event_type, details || null);
 
   res.json({ ok: true });
+});
+
+// GET /api/agents-meta — agents.conf snapshot (name + color, no secrets)
+// Frontend uses this to derive the colour legend instead of carrying a
+// duplicate hardcoded list. token_env / channel_dir intentionally omitted
+// from the browser-facing payload.
+app.get('/api/agents-meta', (req, res) => {
+  res.json(AGENT_ROWS.map((r) => ({ name: r.name, color: r.color })));
 });
 
 // GET /api/status — current status of all agents (latest heartbeat each)

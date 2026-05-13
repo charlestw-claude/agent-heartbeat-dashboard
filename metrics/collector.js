@@ -3,6 +3,7 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileP = promisify(execFile);
 const { getDb } = require('../db/database');
+const { readAgentsConf } = require('../agents-conf');
 
 // Polls VM resource metrics once per second. Buffers samples in memory and
 // flushes to SQLite every BATCH_FLUSH_MS to keep write amplification low.
@@ -28,8 +29,16 @@ const AGENT_PROC_NAMES = new Set(['bun.exe', 'claude.exe']);
 // its .bat file (e.g. `cmd /k ...\Claude-Agent-02.bat`). bun.exe / claude.exe
 // processes themselves carry no agent identifier, so we walk the parent
 // chain (up to MAX_PARENT_HOPS) and match the first ancestor whose command
-// line contains one of the known agent names.
-const AGENT_NAME_PATTERN = /Claude-Agent-\d+|Claude-Deloitte|Claude-Quant-2|Claude-Quant|Claude-Guest-Agent|Guest-Agent/i;
+// line contains one of the known agent names. Names come from agents.conf;
+// sorted longest-first so e.g. "Claude-Quant-2" wins over "Claude-Quant".
+const AGENT_NAME_PATTERN = (() => {
+  const names = readAgentsConf()
+    .map((r) => r.name)
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(names.join('|'), 'i');
+})();
 const MAX_PARENT_HOPS = 12;
 
 let lastNet = null;

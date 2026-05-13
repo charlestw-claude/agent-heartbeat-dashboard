@@ -1,16 +1,22 @@
 const API = '';
 const REFRESH_INTERVAL = 60_000; // 1 minute
 
-const AGENT_COLORS = {
-  'Claude-Agent-01': '#3b82f6',
-  'Claude-Agent-02': '#8b5cf6',
-  'Claude-Agent-03': '#06b6d4',
-  'Claude-Agent-04': '#f59e0b',
-  'Claude-Agent-05': '#10b981',
-  'Claude-Deloitte': '#ec4899',
-  'Claude-Quant':    '#f97316',
-  'Claude-Quant-2':  '#14b8a6',
-};
+// Populated at load from /api/agents-meta (which reads agents.conf). Until
+// then getAgentColor falls back to neutral grey.
+let AGENT_COLORS = {};
+
+async function loadAgentsMeta() {
+  try {
+    const meta = await fetchJson('/api/agents-meta');
+    if (Array.isArray(meta)) {
+      AGENT_COLORS = Object.fromEntries(
+        meta.filter((a) => a && a.color).map((a) => [a.name, a.color])
+      );
+    }
+  } catch (e) {
+    console.warn('failed to load /api/agents-meta', e);
+  }
+}
 
 // Status-card groups. Order here is render order; first matching group wins.
 // Empty groups still render a placeholder so the user can see slots that are
@@ -1619,7 +1625,9 @@ document.getElementById('timelineHours')?.addEventListener('change', (e) => {
 // Manual refresh button.
 document.getElementById('timelineRefresh')?.addEventListener('click', () => refreshTimeline());
 
-refresh();
+// Prime agent metadata (colours) before the first refresh so card avatars
+// render correctly on initial paint. Falls through silently on error.
+loadAgentsMeta().then(() => refresh());
 setInterval(() => refresh(), REFRESH_INTERVAL);
 
 // Primary delivery of agent activity is a WS push from /ws/metrics — the
