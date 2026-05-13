@@ -94,7 +94,9 @@ app.post('/api/heartbeat', (req, res) => {
         })),
       },
     });
-  } catch {}
+  } catch (e) {
+    console.error('WS heartbeat broadcast failed:', e.message);
+  }
 
   res.json({ ok: true, count: agents.length, source: src });
 });
@@ -401,6 +403,7 @@ app.post('/api/agent/:name/fresh-start', (req, res) => {
     fs.writeFileSync(path.join(stateDir, 'fresh-start.flag'), new Date().toISOString());
     res.json({ ok: true, agent: req.params.name, fresh_start: true });
   } catch (e) {
+    console.error(`fresh-start set failed for ${req.params.name}:`, e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -415,6 +418,7 @@ app.delete('/api/agent/:name/fresh-start', (req, res) => {
     if (fs.existsSync(flagPath)) fs.unlinkSync(flagPath);
     res.json({ ok: true, agent: req.params.name, fresh_start: false });
   } catch (e) {
+    console.error(`fresh-start clear failed for ${req.params.name}:`, e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -460,6 +464,7 @@ app.post('/api/tg-log', (req, res) => {
     );
     res.json({ ok: true, id: info.lastInsertRowid });
   } catch (e) {
+    console.error(`tg-log write failed (agent=${agent_name} dir=${direction}):`, e.message);
     res.status(500).json({ error: e.message });
   }
 });
