@@ -503,8 +503,8 @@ app.get('/{*path}', (req, res) => {
 const server = http.createServer(app);
 wsHub.attach(server);
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Agent Heartbeat Dashboard running on http://0.0.0.0:${PORT}`);
+server.listen(PORT, '127.0.0.1', () => {
+  console.log(`Agent Heartbeat Dashboard running on http://127.0.0.1:${PORT}`);
   collector.start();
   rollup.start();
   archive.start();
